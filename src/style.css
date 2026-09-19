@@ -287,7 +287,7 @@ html {
 .hero-copy {
   margin-left: max(6%, calc((100% - 1268px) / 2));
   padding-top: 43px;
-  padding-bottom: 100px;
+  padding-bottom: 32px;
   position: relative;
   z-index: 2;
   width: 53%;
@@ -459,26 +459,6 @@ html {
   font-size: 8px;
   letter-spacing: 3px;
   color: #615758;
-}
-.hero-bottom {
-  position: absolute;
-  bottom: 27px;
-  left: 6%;
-  right: 6%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.motion-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 8px;
-  border: 1px solid #ffffff20;
-  border-radius: 20px;
-  background: #0005;
-  padding: 8px 11px;
-  color: #b3aaa5;
 }
 .bats {
   position: absolute;
@@ -2367,19 +2347,6 @@ td .diagnostic {
   .hero-side-label {
     display: none;
   }
-  .hero-bottom {
-    bottom: 19px;
-    left: 6%;
-    right: 6%;
-  }
-  .motion-toggle {
-    font-size: 7px;
-    padding: 7px 8px;
-    gap: 5px;
-  }
-  .motion-toggle svg {
-    width: 10px;
-  }
   .bat-2 {
     right: 55%;
     top: 24%;
@@ -3011,9 +2978,6 @@ td .diagnostic {
   .hero-actions {
     margin-top: 22px;
   }
-  .hero-bottom {
-    bottom: 18px;
-  }
   .hero-art {
     inset: -10px -20px -20px -20px;
     --scene-position: 60% 10%;
@@ -3060,13 +3024,10 @@ td .diagnostic {
 .admin-sidebar .brand {
   width: 145px;
 }
-.hero-bottom {
-  justify-content: flex-end;
-}
 .hero-countdown {
   position: absolute;
   right: 6%;
-  bottom: 91px;
+  bottom: 32px;
   z-index: 2;
   padding: 18px 22px;
   border-left: 1px solid #d3664d8c;
@@ -3112,7 +3073,7 @@ td .diagnostic {
 @media (max-width: 800px) {
   .hero-countdown {
     right: 6%;
-    bottom: 86px;
+    bottom: 32px;
     padding: 15px;
   }
   .count-unit b {

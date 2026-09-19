@@ -14,8 +14,6 @@ import {
   Smartphone,
   Mail,
   ChevronLeft,
-  Pause,
-  Play,
   Download,
   LoaderCircle,
 } from "lucide-react";
@@ -195,7 +193,7 @@ function EventLanding({
   onArtworkReady: () => void;
 }) {
   const [buy, setBuy] = useState(false);
-  const [paused, setPaused] = useState(
+  const [paused] = useState(
     () => matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
   const [privacy, setPrivacy] = useState(false);
@@ -328,16 +326,6 @@ function EventLanding({
           </div>
           <div className="hero-countdown">
             <Countdown event={event} />
-          </div>
-          <div className="hero-bottom">
-            <button
-              className="motion-toggle"
-              onClick={() => setPaused(!paused)}
-              aria-label={paused ? "Включить анимацию" : "Остановить анимацию"}
-            >
-              {paused ? <Play size={13} /> : <Pause size={13} />}{" "}
-              {paused ? "Оживить ночь" : "Ночь оживает"}
-            </button>
           </div>
         </section>
         <div className="marquee" aria-hidden="true">

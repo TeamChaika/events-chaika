@@ -233,7 +233,7 @@ export async function seed(store) {
     200,
     "Одна ночь, в которой можно стать кем угодно. Наденьте свой самый загадочный образ и станьте частью истории под красной луной.",
     "Black, red & a little mystery",
-    16,
+    21,
     1,
     1,
     new Date().toISOString(),
