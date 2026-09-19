@@ -151,6 +151,74 @@ test("QRM creation preflights terminal, uses kopecks and correlates callback", a
   assert.equal(calls.length, 2);
   const body = JSON.parse(calls[1].init.body);
   assert.equal(body.sum, 1000000);
+  assert.match(body.payment_purpose, /^[A-Za-z0-9 -]+$/);
+  assert.ok(body.payment_purpose.length <= 140);
   assert.equal(body.nomenclature[0].price, 500000);
   assert.ok(body.notification_url.includes(order.id));
+});
+test("live creation follows the terminal's receipt and nomenclature settings", async (t) => {
+  const previous = { ...process.env },
+    original = global.fetch;
+  Object.assign(process.env, {
+    QRM_API_BASE_URL: "https://app.qrm.ooo",
+    QRM_LIVE_API_KEY: "fixture",
+    QRM_EXPECTED_MERCHANT_ID: "expected",
+  });
+  t.after(() => {
+    global.fetch = original;
+    for (const key of [
+      "QRM_API_BASE_URL",
+      "QRM_LIVE_API_KEY",
+      "QRM_EXPECTED_MERCHANT_ID",
+    ])
+      if (previous[key] === undefined) delete process.env[key];
+      else process.env[key] = previous[key];
+  });
+  let receipt = false,
+    body;
+  global.fetch = async (url, init) => {
+    if (url.includes("check-api-key"))
+      return Response.json({
+        merchant_id: "expected",
+        firm_name: "Fixture",
+        qrt_is_b2c: true,
+        requires_receipt: receipt,
+        is_nomenclature: false,
+        subscription_end_date: "2099-01-01",
+      });
+    body = JSON.parse(init.body);
+    return Response.json({
+      results: {
+        operation_id: randomUUID(),
+        qr_link: "https://qr.nspk.ru/fixture",
+      },
+    });
+  };
+  const order = {
+    id: randomUUID(),
+    mode: "live",
+    total: 500000,
+    unit_price: 500000,
+    quantity: 1,
+    email: "qa@example.com",
+    webhook_token: "fixture",
+    access_token: "fixture",
+  };
+  await createPayment(
+    order,
+    { title: "Ночь · «Луны»" },
+    "https://events.example.com",
+  );
+  assert.equal(body.customer_email, undefined);
+  assert.equal(body.nomenclature, undefined);
+  assert.match(body.payment_purpose, /^[A-Za-z0-9 -]+$/);
+  receipt = true;
+  await createPayment(
+    order,
+    { title: "А".repeat(100) },
+    "https://events.example.com",
+  );
+  assert.equal(body.customer_email, order.email);
+  assert.equal(body.nomenclature[0].name.length, 100);
+  assert.equal(body.nomenclature[0].amount, 500000);
 });

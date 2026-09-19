@@ -125,19 +125,26 @@ export async function createPayment(order, event, origin) {
   const input = {
     sum: order.total,
     ttl: 15,
-    payment_purpose: `Билеты: ${event.title} · ${order.id.slice(0, 8)}`,
+    // QRM's live validator rejects decorative separators in payment purposes.
+    payment_purpose: `Chaika Team Events ${order.id}`,
     notification_url: `${origin}/api/webhooks/qrm/${order.id}/${order.webhook_token}`,
     redirect_url: `${origin}/order/${order.access_token}`,
-    customer_email: order.email,
-    nomenclature: [
-      {
-        name: `Билет: ${event.title}`,
-        count: order.quantity,
-        price: order.unit_price,
-        amount: order.total,
-        payment_method: 4,
-      },
-    ],
+    ...(merchant.requires_receipt ? { customer_email: order.email } : {}),
+    ...(order.mode === "sandbox" ||
+    merchant.requires_receipt ||
+    merchant.is_nomenclature
+      ? {
+          nomenclature: [
+            {
+              name: `Билет: ${event.title}`.slice(0, 100),
+              count: order.quantity,
+              price: order.unit_price,
+              amount: order.total,
+              payment_method: 4,
+            },
+          ],
+        }
+      : {}),
   };
   // QRM does not document POST idempotency. Persist first, never retry an uncertain creation.
   const response = await request(order.mode, "/operations/qr-code/", {
