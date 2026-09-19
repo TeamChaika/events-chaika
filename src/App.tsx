@@ -319,10 +319,6 @@ function EventLanding({
                 <span>за одного гостя</span>
               </div>
             </div>
-            <div className="payment-note">
-              <ShieldCheck size={13} /> Оплата через СБП <span>·</span> Билет в
-              СМС и на почту
-            </div>
           </div>
           <div className="hero-countdown">
             <Countdown event={event} />

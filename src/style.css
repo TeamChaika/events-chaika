@@ -439,17 +439,6 @@ html {
   display: block;
   margin-top: 4px;
 }
-.payment-note {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 9px;
-  color: #8c8885;
-  margin-top: 14px;
-}
-.payment-note > span {
-  margin: 0 2px;
-}
 .hero-side-label {
   position: absolute;
   left: 22px;
@@ -2339,11 +2328,6 @@ td .diagnostic {
   .hero-price > span {
     font-size: 8px;
   }
-  .payment-note {
-    font-size: 8px;
-    gap: 5px;
-    margin-top: 11px;
-  }
   .hero-side-label {
     display: none;
   }
@@ -2770,9 +2754,6 @@ td .diagnostic {
   }
   .hero {
     min-height: 777px;
-  }
-  .payment-note {
-    font-size: 7px;
   }
   .stat > strong {
     font-size: 20px;
