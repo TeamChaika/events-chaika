@@ -3,33 +3,11 @@ import { ArrowUpRight } from "lucide-react";
 import { startVideoIntro } from "./videoIntroPlayback";
 import "./video-cinematic-intro.css";
 
-// Measured against the final held-card frames of the published 720 × 1280 clip.
-const qrTrack = [
-  { time: 5.5, x: 289, y: 827 },
-  { time: 6.5, x: 281, y: 841 },
-  { time: 7.5, x: 266, y: 829 },
-  { time: 8.05, x: 262, y: 826 },
-];
-
-function qrPosition(time: number) {
-  const end = qrTrack.findIndex((frame) => frame.time >= time);
-  if (end <= 0) return qrTrack[end === -1 ? qrTrack.length - 1 : 0];
-  const from = qrTrack[end - 1];
-  const to = qrTrack[end];
-  const progress = (time - from.time) / (to.time - from.time);
-  return {
-    x: from.x + (to.x - from.x) * progress,
-    y: from.y + (to.y - from.y) * progress,
-  };
-}
-
 export function VideoCinematicIntro({
-  qrImage,
   ticketUrl,
   onComplete,
   onFallback,
 }: {
-  qrImage: string;
   ticketUrl: string;
   onComplete: () => void;
   onFallback: () => void;
@@ -41,7 +19,6 @@ export function VideoCinematicIntro({
   const [ready, setReady] = useState(false);
   const [time, setTime] = useState(0);
   const [revealing, setRevealing] = useState(false);
-  const qr = qrPosition(time);
 
   useEffect(() => {
     const previous = document.body.style.overflow;
@@ -95,15 +72,6 @@ export function VideoCinematicIntro({
           disablePictureInPicture
           onTimeUpdate={(event) => setTime(event.currentTarget.currentTime)}
         />
-        <svg
-          className="cinema-video-qr"
-          viewBox="0 0 720 1280"
-          style={{ opacity: ready && time >= 5.5 ? 1 : 0 }}
-        >
-          <g transform={`translate(${qr.x} ${qr.y}) rotate(-1.5 96 96)`}>
-            <image href={qrImage} width="192" height="192" />
-          </g>
-        </svg>
       </div>
       <div className="cinema-vignette" aria-hidden="true" />
       <div className="cinema-topline" aria-hidden="true">
