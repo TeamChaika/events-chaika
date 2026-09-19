@@ -121,14 +121,7 @@ export function GuestFields() {
       </div>
       <label>
         Номер телефона
-        <input
-          type="tel"
-          name="phone"
-          autoComplete="tel"
-          placeholder="+7 999 123-45-67"
-          required
-          pattern="[+0-9 ()\-]{10,22}"
-        />
+        <PhoneInput />
       </label>
       <label>
         Электронная почта
@@ -143,5 +136,84 @@ export function GuestFields() {
         <small>Сюда отправим ваши билеты</small>
       </label>
     </>
+  );
+}
+
+function PhoneInput() {
+  const format = (input: HTMLInputElement, raw: string, caret: number) => {
+    const digits = raw.replace(/\D/g, "");
+    const hasCountry = /^[78]/.test(digits);
+    const number = (hasCountry ? digits.slice(1) : digits).slice(0, 10);
+    let value = digits ? "+7 (" + number.slice(0, 3) : "";
+    if (number.length >= 3) value += ") ";
+    if (number.length > 3) value += number.slice(3, 6);
+    if (number.length >= 6) value += "-";
+    if (number.length > 6) value += number.slice(6, 8);
+    if (number.length >= 8) value += "-";
+    if (number.length > 8) value += number.slice(8, 10);
+    input.value = value;
+    const before =
+      raw.slice(0, caret).replace(/\D/g, "").length + (hasCountry ? 0 : 1);
+    let seen = 0,
+      position = value.length;
+    if (caret < raw.length) {
+      for (let i = 0; i < value.length; i++) {
+        if (/\d/.test(value[i]) && ++seen >= before) {
+          position = i + 1;
+          break;
+        }
+      }
+    }
+    input.setSelectionRange(position, position);
+  };
+  return (
+    <input
+      type="tel"
+      inputMode="tel"
+      name="phone"
+      autoComplete="tel"
+      placeholder="+7 (___) ___-__-__"
+      required
+      maxLength={18}
+      pattern={String.raw`\+7 \([0-9]{3}\) [0-9]{3}-[0-9]{2}-[0-9]{2}`}
+      title="Введите номер полностью: +7 (999) 123-45-67"
+      onChange={(event) => {
+        const input = event.currentTarget;
+        format(input, input.value, input.selectionStart ?? input.value.length);
+      }}
+      onKeyDown={(event) => {
+        if (
+          !["Backspace", "Delete"].includes(event.key) ||
+          event.ctrlKey ||
+          event.metaKey ||
+          event.altKey
+        )
+          return;
+        const input = event.currentTarget;
+        const start = input.selectionStart ?? 0;
+        if (start !== input.selectionEnd || !input.value) return;
+        event.preventDefault();
+        const step = event.key === "Backspace" ? -1 : 1;
+        let index = event.key === "Backspace" ? start - 1 : start;
+        while (
+          index >= 4 &&
+          index < input.value.length &&
+          !/\d/.test(input.value[index])
+        )
+          index += step;
+        if (index >= 4 && index < input.value.length) {
+          format(
+            input,
+            input.value.slice(0, index) + input.value.slice(index + 1),
+            index,
+          );
+        } else if (
+          event.key === "Backspace" &&
+          !input.value.slice(4).replace(/\D/g, "")
+        ) {
+          input.value = "";
+        }
+      }}
+    />
   );
 }
