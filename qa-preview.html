@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Мобильная проверка · 390 / 351</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 20px;
+        background: #242424;
+        color: #eee;
+        font: 12px system-ui;
+        display: flex;
+        gap: 24px;
+        width: max-content;
+      }
+      figure {
+        margin: 0;
+      }
+      figcaption {
+        margin-bottom: 15px;
+      }
+      iframe {
+        border: 1px solid #444;
+        border-radius: 15px;
+        height: 870px;
+        display: block;
+        background: #09090b;
+      }
+      button {
+        margin: 10px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <figure>
+      <figcaption>390 px · телефон</figcaption>
+      <iframe
+        id="mobile390"
+        title="Телефон 390 px"
+        width="390"
+        src="/"
+      ></iframe>
+    </figure>
+    <figure>
+      <figcaption>351 px · компактный телефон</figcaption>
+      <iframe
+        id="mobile351"
+        title="Телефон 351 px"
+        width="351"
+        src="/"
+      ></iframe>
+    </figure>
+    <script>
+      const screen = new URLSearchParams(location.search).get("screen");
+      if (screen === "admin" || screen === "checkin")
+        document
+          .querySelectorAll("iframe")
+          .forEach((frame) => (frame.src = "/" + screen));
+    </script>
+  </body>
+</html>

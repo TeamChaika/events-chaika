@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1536" height="1024" viewBox="0 0 1536 1024">
+  <defs>
+    <filter id="soft"><feGaussianBlur stdDeviation="1.8"/></filter>
+    <mask id="foreground" maskUnits="userSpaceOnUse" x="0" y="0" width="1536" height="1024">
+      <rect width="1536" height="1024" fill="white"/>
+      <!-- Poster silhouette keeps the rotating sphere and corona behind the guest. -->
+      <path fill="black" filter="url(#soft)" d="M1102 124 C1073 127 1043 139 1030 157 C1018 173 1026 188 1011 207 C1000 222 1002 245 991 258 C980 273 981 288 994 300 C986 316 1001 336 1017 346 C1015 361 1035 366 1051 360 L1053 391 Q1049 418 1022 428 L995 439 Q974 425 958 424 Q942 425 928 439 C901 449 877 478 867 510 Q865 546 883 566 L890 590 Q891 621 914 641 L913 676 L943 704 L893 759 L823 815 L754 930 L672 1024 H1536 V951 L1472 855 L1426 800 L1411 724 Q1420 687 1390 654 L1378 610 Q1400 586 1382 565 L1370 549 Q1401 515 1402 483 Q1411 455 1395 431 Q1384 400 1361 388 L1343 366 L1317 355 Q1291 337 1268 347 L1247 351 L1237 370 L1192 358 L1175 340 L1173 329 Q1209 317 1206 295 L1209 277 Q1225 273 1223 261 L1211 243 Q1218 225 1211 209 Q1211 183 1197 165 C1178 140 1140 124 1102 124 Z"/>
+    </mask>
+  </defs>
+  <rect width="1536" height="1024" fill="white" mask="url(#foreground)"/>
+</svg>
