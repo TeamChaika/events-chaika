@@ -18,7 +18,6 @@ import {
   Play,
   Download,
   LoaderCircle,
-  Sparkles,
 } from "lucide-react";
 import { Admin } from "./Admin";
 import {
@@ -248,7 +247,7 @@ function EventLanding({
             <div className="mist mist-two" />
           </div>
           <div className="bats" aria-hidden="true">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
+            {[2, 3, 4, 5, 6].map((i) => (
               <Bat key={i} index={i} />
             ))}
           </div>
@@ -265,23 +264,15 @@ function EventLanding({
                 <>
                   <span>НОЧЬ</span>
                   <span className="red-title">КРАСНОЙ</span>
-                  <span className="last-title">
-                    ЛУНЫ
-                    <svg viewBox="0 0 90 90" aria-hidden="true">
-                      <path
-                        d="M45 0 49 37 78 14 54 42 90 45 54 49 78 77 49 54 45 90 41 54 13 77 36 49 0 45 36 42 13 14 41 37Z"
-                        fill="currentColor"
-                      />
-                    </svg>
-                  </span>
+                  <span className="last-title">ЛУНЫ</span>
                 </>
               ) : (
                 event.title.toUpperCase()
               )}
             </h1>
             <p className="hero-description">
-              Эта ночь создана, чтобы стать кем-то другим. <br />
-              Встретимся на тёмной стороне.
+              <span>Одна ночь. Два танцпола.</span>
+              <span>Красная луна. Иная реальность.</span>
             </p>
             <div className="event-meta">
               <span>
@@ -293,12 +284,31 @@ function EventLanding({
                 <Clock3 size={17} />
                 {event.time}
               </span>
-              <i />
-              <span>
-                <MapPin size={17} />
-                {event.venue}
-              </span>
             </div>
+            <a
+              className="event-location"
+              href={`https://yandex.ru/maps/?text=${encodeURIComponent(event.address)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`${event.venue}, ${event.address} — открыть в Яндекс Картах, новая вкладка`}
+            >
+              {event.id === "red-moon" && (
+                <span className="venue-logo">
+                  <img
+                    src="/assets/gastro-dvor.png"
+                    alt="Gastro Dvor"
+                    width="2084"
+                    height="1049"
+                  />
+                </span>
+              )}
+              <MapPin size={18} aria-hidden="true" />
+              <span className="location-copy">
+                <strong>{event.venue}</strong>
+                <span>{event.address}</span>
+              </span>
+              <ArrowUpRight size={15} aria-hidden="true" />
+            </a>
             <div className="hero-actions">
               <button
                 className="button primary ticket-cta"
@@ -337,8 +347,8 @@ function EventLanding({
           <div>
             {Array.from({ length: 5 }, (_, i) => (
               <span key={i}>
-                BLACK TIE. RED MOON. <Sparkles /> ОДНА НОЧЬ. ДРУГАЯ РЕАЛЬНОСТЬ.{" "}
-                <Sparkles />
+                ОДНА НОЧЬ. ДВА ТАНЦПОЛА. <i /> КРАСНАЯ ЛУНА. ИНАЯ РЕАЛЬНОСТЬ.
+                <i />
               </span>
             ))}
           </div>
