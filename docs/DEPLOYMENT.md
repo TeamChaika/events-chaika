@@ -3,7 +3,9 @@
 Репозиторий: https://github.com/TeamChaika/events-chaika, ветка `main`.
 Целевой домен: `event.chaika.team`.
 
-Для текущей SQLite-реализации используется отдельный Cloud Server с Docker Compose. База и загруженные афиши находятся в постоянном томе `chaika-events_app_data`. Обновление образа не удаляет этот том. Файл `compose.production.yml` предназначен для Cloud Server; в Timeweb App Platform пользовательские volumes запрещены, поэтому туда эту конфигурацию без смены хранилища переносить нельзя.
+Для текущей SQLite-реализации подготовлена установка на отдельный Cloud Server с Docker Compose. База и загруженные афиши хранятся в постоянном томе `chaika-events_app_data`. Обновление образа не удаляет этот том. Файл `compose.production.yml` предназначен для Cloud Server; [Timeweb App Platform запрещает пользовательские volumes](https://timeweb.cloud/docs/apps/deploying-with-docker-compose), поэтому туда эту конфигурацию без смены хранилища переносить нельзя.
+
+На 19 сентября 2026 код опубликован в GitHub, Docker-образ проверен локально. Timeweb отклонил создание серверов на тарифах 2575 (`no_free_node`), 6769 и 6767 (`servers_is_run_out_error`); ни один из этих серверов не создан. Публичная публикация ожидает выбора другого тарифа или существующего сервера. A-запись и TLS домена ещё не настроены.
 
 ## Первая установка
 
