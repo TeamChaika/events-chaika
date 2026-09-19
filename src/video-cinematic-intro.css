@@ -8,7 +8,7 @@
   position: absolute;
   top: 0;
   left: 50%;
-  height: 100%;
+  height: calc(100% - 150px);
   max-width: 100%;
   aspect-ratio: 9 / 16;
   transform: translateX(-50%);
@@ -43,11 +43,6 @@
   animation: none;
   transform: scaleX(var(--video-progress, 0));
   transition: transform 250ms linear;
-}
-@media (max-height: 760px) {
-  .cinema-video-stage {
-    height: calc(100% - 150px);
-  }
 }
 @media (prefers-reduced-motion: reduce) {
   .cinema-video-stage,
