@@ -16,6 +16,7 @@ export function TicketCard({
   quantity?: number;
 }) {
   const redMoon = event.id === "red-moon";
+  const venue = event.venue === "Гастродвор" ? "Гастро Двор" : event.venue;
   return (
     <article
       className="real-ticket"
@@ -59,11 +60,11 @@ export function TicketCard({
           href={`https://yandex.ru/maps/?text=${encodeURIComponent(event.address)}`}
           target="_blank"
           rel="noopener noreferrer"
-          aria-label={`${event.venue}, ${event.address} — открыть в Яндекс Картах`}
+          aria-label={`${venue}, ${event.address} — открыть в Яндекс Картах`}
         >
           <MapPin size={17} aria-hidden="true" />
           <span>
-            <strong>{event.venue}</strong>
+            <strong>{venue}</strong>
             <span>{event.address}</span>
           </span>
           <ArrowUpRight size={14} aria-hidden="true" />
@@ -110,11 +111,6 @@ export function TicketCard({
             <span className="ticket-label">НОМЕР БИЛЕТА</span>
             <code>{ticket.code.slice(0, 8).toUpperCase()}</code>
           </div>
-          <span>
-            Один гость
-            <br />
-            Один проход
-          </span>
         </div>
         <a className="ticket-own-link" href={"/ticket/" + ticket.code}>
           Открыть отдельный билет <ArrowUpRight size={12} />
