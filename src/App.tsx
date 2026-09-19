@@ -217,12 +217,6 @@ function EventLanding({
             : "Тестовый терминал QRM"}
         </div>
       )}
-      <header className="public-header">
-        <EventPartners />
-        <a href="/admin" className="header-link">
-          Организаторам <ArrowUpRight size={15} />
-        </a>
-      </header>
       <main>
         <section
           className={
@@ -285,13 +279,8 @@ function EventLanding({
                 {event.time}
               </span>
             </div>
-            <a
-              className="event-location"
-              href={`https://yandex.ru/maps/?text=${encodeURIComponent(event.address)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label={`${event.venue}, ${event.address} — открыть в Яндекс Картах, новая вкладка`}
-            >
+            <div className="venue-brands">
+              <EventPartners />
               {event.id === "red-moon" && (
                 <span className="venue-logo">
                   <img
@@ -302,6 +291,14 @@ function EventLanding({
                   />
                 </span>
               )}
+            </div>
+            <a
+              className="event-location"
+              href={`https://yandex.ru/maps/?text=${encodeURIComponent(event.address)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`${event.venue}, ${event.address} — открыть в Яндекс Картах, новая вкладка`}
+            >
               <MapPin size={18} aria-hidden="true" />
               <span className="location-copy">
                 <strong>{event.venue}</strong>
@@ -355,7 +352,6 @@ function EventLanding({
         </div>
       </main>
       <footer className="public-footer">
-        <EventPartners />
         <span>Создаём поводы быть вместе.</span>
         <button className="plain" onClick={() => setPrivacy(true)}>
           Конфиденциальность

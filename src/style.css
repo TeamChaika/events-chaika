@@ -211,26 +211,6 @@ html {
   height: 8px;
   background: #74443e;
 }
-.public-header {
-  height: 100px;
-  max-width: 1440px;
-  margin: auto;
-  padding: 0 6%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  position: relative;
-  z-index: 3;
-}
-.header-link {
-  position: absolute;
-  right: 6%;
-  font-size: 10px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: #b7b4b2;
-}
 .hero {
   min-height: 770px;
   position: relative;
@@ -373,13 +353,22 @@ html {
   width: 1px;
   background: #ffffff24;
 }
+.venue-brands {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-top: 22px;
+}
+.venue-brands .event-partners .brand {
+  width: 142px;
+}
 .event-location {
   display: flex;
   align-items: center;
   gap: 12px;
   width: fit-content;
   max-width: 100%;
-  margin-top: 18px;
+  margin-top: 14px;
   color: #c6c0bd;
   border-radius: 4px;
   transition: color 180ms ease;
@@ -2083,13 +2072,6 @@ td .diagnostic {
   }
 }
 @media (max-width: 800px) {
-  .public-header {
-    height: 84px;
-    padding-inline: 6%;
-  }
-  .header-link {
-    display: none;
-  }
   .hero {
     min-height: 690px;
   }
@@ -2240,9 +2222,6 @@ td .diagnostic {
     gap: 7px;
     letter-spacing: 0.1px;
   }
-  .public-header {
-    height: 75px;
-  }
   .hero {
     min-height: 790px;
   }
@@ -2324,7 +2303,20 @@ td .diagnostic {
   }
   .event-location {
     gap: 9px;
-    margin-top: 16px;
+    margin-top: 12px;
+  }
+  .venue-brands {
+    gap: 14px;
+    margin-top: 20px;
+  }
+  .venue-brands .event-partners {
+    gap: 10px;
+  }
+  .venue-brands .event-partners .brand {
+    width: 98px;
+  }
+  .venue-brands .partner-logo {
+    width: 78px;
   }
   .venue-logo {
     width: 72px;
@@ -2997,9 +2989,6 @@ td .diagnostic {
   }
 }
 @media (min-width: 801px) and (max-height: 800px) {
-  .public-header {
-    height: 80px;
-  }
   .hero {
     min-height: max(560px, calc(100svh - 107px));
   }
@@ -3137,9 +3126,6 @@ td .diagnostic {
   }
 }
 @media (max-width: 560px) {
-  .public-header .brand {
-    width: 176px;
-  }
   .hero-countdown {
     top: 86px;
     left: 6%;
@@ -3198,9 +3184,6 @@ td .diagnostic {
   flex-wrap: wrap;
   gap: 12px;
 }
-.public-header {
-  justify-content: center;
-}
 .event-partners .brand {
   width: 170px;
 }
@@ -3226,7 +3209,6 @@ td .diagnostic {
   .event-partners {
     gap: 14px;
   }
-  .public-header .event-partners .brand,
   .loader-brand .event-partners .brand,
   .public-footer .event-partners .brand {
     width: 145px;
