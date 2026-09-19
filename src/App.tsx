@@ -38,6 +38,7 @@ import {
 } from "./ui";
 import { MoonScene } from "./MoonScene";
 import { MoonLoader } from "./MoonLoader";
+import { TicketCard } from "./TicketCard";
 
 function Bat({ index }: { index: number }) {
   return (
@@ -469,51 +470,6 @@ function Checkout({
         </div>
       </form>
     </Modal>
-  );
-}
-function TicketCard({
-  ticket,
-  event,
-  name,
-  demo,
-  quantity,
-}: {
-  ticket: TicketData;
-  event: EventData;
-  name: string;
-  demo: boolean;
-  quantity?: number;
-}) {
-  return (
-    <article className="real-ticket">
-      <div className="ticket-top">
-        <Brand />
-        <span>{demo ? "ДЕМО-БИЛЕТ" : "ЭЛЕКТРОННЫЙ БИЛЕТ"}</span>
-      </div>
-      <h2>{event.title}</h2>
-      <div className="ticket-details">
-        <span>
-          {dateLabel(event.date)} · {event.time}
-        </span>
-        <span>{event.venue}</span>
-      </div>
-      <div className="ticket-perforation" />
-      <img
-        className="ticket-qr"
-        src={ticket.qr_image}
-        alt={"QR-код билета " + ticket.ordinal}
-      />
-      <strong className="ticket-guest">{name}</strong>
-      <span className="ticket-number">
-        Билет {ticket.ordinal}
-        {quantity ? " из " + quantity : ""} ·{" "}
-        {ticket.used_at ? "Уже использован" : "Один гость — один проход"}
-      </span>
-      <code>{ticket.code.slice(0, 8).toUpperCase()}</code>
-      <a className="ticket-own-link" href={"/ticket/" + ticket.code}>
-        Открыть отдельный билет <ArrowUpRight size={12} />
-      </a>
-    </article>
   );
 }
 function OrderPage() {

@@ -1,0 +1,485 @@
+.single-ticket-page {
+  padding: 28px 16px 40px;
+  gap: 20px;
+  background:
+    radial-gradient(ellipse at 50% 18%, #5b17132b, transparent 50%), #09090b;
+}
+.real-ticket {
+  --ticket-red: #ff7966;
+  width: 380px;
+  max-width: 100%;
+  padding: 0;
+  text-align: left;
+  background: #111012;
+  border: 1px solid #99534b65;
+  border-radius: 18px;
+  overflow: hidden;
+  position: relative;
+  isolation: isolate;
+  box-shadow:
+    0 30px 90px #0008,
+    0 0 55px #ff392b0d;
+}
+.ticket-visual {
+  position: relative;
+  padding: 24px 24px 22px;
+  overflow: hidden;
+  isolation: isolate;
+  background: linear-gradient(125deg, #180f13, #230e11 72%, #110e11);
+}
+.ticket-lunar-art {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+.ticket-moon {
+  width: 192px;
+  aspect-ratio: 1;
+  position: absolute;
+  top: 64px;
+  right: -30px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 28% 22%, #ffaf8533, transparent 58%),
+    linear-gradient(135deg, #ff3a36, #fb130e 63%, #5e0615),
+    url("/assets/moon-color.jpg") 47% center / 210% 110%;
+  background-blend-mode: screen, multiply, normal;
+  box-shadow:
+    inset -26px -8px 30px #320510b3,
+    0 0 48px #f534244a;
+  opacity: 0.94;
+}
+.ticket-orbit {
+  position: absolute;
+  width: 258px;
+  aspect-ratio: 1;
+  top: 30px;
+  right: -62px;
+  border: 1px solid #ff917840;
+  border-radius: 50%;
+  transform: rotate(-27deg) scaleY(0.77);
+}
+.ticket-orbit::before {
+  content: "";
+  position: absolute;
+  inset: -14px;
+  border: 1px dashed #ff917826;
+  border-radius: 50%;
+}
+.ticket-orbit::after {
+  content: "";
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  top: 38px;
+  left: 32px;
+  border-radius: 50%;
+  background: #ffbda7;
+  box-shadow: 0 0 13px #ff674d;
+}
+.ticket-grid {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, #180e12 0%, #180e12b8 30%, transparent 74%),
+    linear-gradient(0deg, #130e12, transparent 42%),
+    repeating-linear-gradient(0deg, transparent 0 39px, #ffac9008 39px 40px),
+    repeating-linear-gradient(90deg, transparent 0 39px, #ffac9008 39px 40px);
+}
+.real-ticket .ticket-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.real-ticket .event-partners {
+  gap: 12px;
+}
+.real-ticket .event-partners .brand {
+  width: 108px;
+}
+.real-ticket .partner-logo {
+  width: 80px;
+}
+.real-ticket .partner-cross {
+  font-size: 12px;
+}
+.real-ticket .ticket-age {
+  flex-shrink: 0;
+  padding: 5px 7px;
+  border: 1px solid #e2b6a838;
+  border-radius: 6px;
+  color: #edd2c6;
+  font:
+    10px/1.2 "Manrope Variable",
+    sans-serif;
+}
+.ticket-edition {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 22px;
+  font:
+    8px/1.5 ui-monospace,
+    monospace;
+  letter-spacing: 1.4px;
+  color: #d9a292;
+}
+.ticket-edition > span:first-child::before {
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin-right: 7px;
+  background: #ff7862;
+  box-shadow: 0 0 8px #ff786280;
+}
+.real-ticket h2 {
+  max-width: 290px;
+  margin: 25px 0 0;
+  font:
+    530 43px/1.06 "Oswald Variable",
+    sans-serif;
+  letter-spacing: -0.8px;
+  text-transform: uppercase;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+  color: #fff2e9;
+  text-shadow: 0 2px 16px #17050bee;
+}
+.ticket-tagline {
+  margin-top: 12px;
+  color: #e6ac9b;
+  font-size: 7px;
+  line-height: 1.7;
+  letter-spacing: 1.3px;
+}
+.ticket-schedule {
+  display: flex;
+  align-items: end;
+  gap: 26px;
+  margin-top: 24px;
+}
+.ticket-schedule > div:not(.ticket-year) {
+  display: grid;
+  gap: 5px;
+}
+.ticket-schedule span,
+.ticket-label {
+  display: block;
+  color: #b7a3a0;
+  font:
+    7px/1.6 ui-monospace,
+    monospace;
+  letter-spacing: 1.5px;
+}
+.ticket-schedule strong {
+  font:
+    420 23px/1.1 "Oswald Variable",
+    sans-serif;
+  color: #fff0e5;
+}
+.ticket-year {
+  margin-left: auto;
+  font:
+    8px/1 ui-monospace,
+    monospace;
+  letter-spacing: 2px;
+  writing-mode: vertical-rl;
+  color: #a17c77;
+}
+.ticket-location-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 17px 24px;
+  background: #2114174d;
+  border-top: 1px solid #c9827326;
+}
+.ticket-location {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.ticket-location > svg {
+  color: var(--ticket-red);
+}
+.ticket-location > span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.ticket-location strong {
+  font-size: 11px;
+  font-weight: 550;
+  color: #f6e3dc;
+}
+.ticket-location span span {
+  font-size: 8px;
+  line-height: 1.6;
+  color: #b9a8a3;
+  overflow-wrap: anywhere;
+}
+.real-ticket .ticket-venue-logo {
+  width: 61px;
+}
+.ticket-perforation {
+  position: relative;
+  margin: 0;
+  height: 18px;
+  border: 0;
+  display: flex;
+  align-items: center;
+}
+.ticket-perforation > span {
+  width: 100%;
+  border-top: 1px dashed #95655a66;
+}
+.ticket-perforation::before,
+.ticket-perforation::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 18px;
+  height: 18px;
+  border: 1px solid #99534b65;
+  border-radius: 50%;
+  background: #09090b;
+  left: -10px;
+}
+.ticket-perforation::after {
+  left: auto;
+  right: -10px;
+}
+.ticket-admission {
+  padding: 12px 24px 20px;
+}
+.ticket-guest-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.ticket-guest-row > div {
+  min-width: 0;
+}
+.ticket-guest {
+  display: block;
+  font-size: 15px;
+  line-height: 1.5;
+  font-weight: 550;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+.ticket-admit {
+  flex-shrink: 0;
+  font:
+    8px/1.5 ui-monospace,
+    monospace;
+  color: #d4aaa0;
+  border: 1px solid #bc756133;
+  border-radius: 4px;
+  padding: 5px 7px;
+}
+.ticket-qr-frame {
+  width: 210px;
+  max-width: 100%;
+  margin: 20px auto 0;
+  padding: 8px;
+  position: relative;
+  border: 1px solid #eb725b;
+  border-radius: 9px;
+  background: #161113;
+  box-shadow: 0 0 30px #ef41200c;
+}
+.ticket-qr-frame::before,
+.ticket-qr-frame::after {
+  content: "";
+  position: absolute;
+  width: 24px;
+  height: 3px;
+  background: #ffa18c;
+  left: 13px;
+  top: -2px;
+}
+.ticket-qr-frame::after {
+  left: auto;
+  right: 13px;
+  top: auto;
+  bottom: -2px;
+}
+.ticket-qr {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  aspect-ratio: 1;
+  border-radius: 3px;
+  background: white;
+}
+.ticket-number {
+  margin-top: 11px;
+  color: #beaba3;
+  font-size: 9px;
+  text-align: center;
+}
+.ticket-number.ticket-used {
+  color: #ff8d7a;
+  font-weight: 700;
+}
+.ticket-serial-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 16px;
+  margin-top: 18px;
+  padding-top: 15px;
+  border-top: 1px solid #d9a7971f;
+}
+.real-ticket code {
+  display: block;
+  margin-top: 5px;
+  font:
+    13px/1.4 ui-monospace,
+    monospace;
+  letter-spacing: 3px;
+  color: #f59b88;
+}
+.ticket-serial-row > span {
+  font-size: 8px;
+  line-height: 1.6;
+  color: #c9aaa0;
+  text-align: right;
+}
+.ticket-own-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin-top: 16px;
+  font-size: 8px;
+  color: #c2a69d;
+}
+.ticket-own-link:hover {
+  color: #ffb9a9;
+}
+@media (max-width: 380px) {
+  .ticket-visual {
+    padding-inline: 18px;
+  }
+  .ticket-location-row {
+    padding-inline: 18px;
+  }
+  .ticket-admission {
+    padding-inline: 18px;
+  }
+  .real-ticket .event-partners {
+    gap: 9px;
+  }
+  .real-ticket .event-partners .brand {
+    width: 96px;
+  }
+  .real-ticket .partner-logo {
+    width: 70px;
+  }
+  .real-ticket h2 {
+    font-size: 38px;
+  }
+  .real-ticket .ticket-venue-logo {
+    width: 48px;
+  }
+  .ticket-guest {
+    font-size: 14px;
+  }
+}
+@media print {
+  .single-ticket-page {
+    background: white;
+    padding: 0;
+    min-height: 0;
+    gap: 0;
+  }
+  .real-ticket {
+    width: 85mm;
+    border: 1px solid #bbb;
+    border-radius: 8px;
+    background: white;
+    color: black;
+    box-shadow: none;
+  }
+  .ticket-visual {
+    padding: 16px;
+    background: white;
+  }
+  .ticket-lunar-art,
+  .ticket-year,
+  .ticket-own-link {
+    display: none;
+  }
+  .real-ticket h2 {
+    font-size: 32px;
+    margin-top: 16px;
+    text-shadow: none;
+  }
+  .real-ticket .event-partners {
+    gap: 10px;
+  }
+  .real-ticket .event-partners .brand {
+    width: 92px;
+  }
+  .real-ticket .partner-logo {
+    width: 70px;
+    filter: invert(1);
+  }
+  .real-ticket .ticket-venue-logo {
+    filter: invert(1);
+    mix-blend-mode: multiply;
+  }
+  .ticket-edition {
+    margin-top: 14px;
+  }
+  .ticket-edition > span:first-child::before {
+    background: black;
+    box-shadow: none;
+  }
+  .ticket-schedule {
+    margin-top: 16px;
+  }
+  .ticket-schedule strong {
+    font-size: 20px;
+  }
+  .ticket-location-row {
+    padding: 12px 16px;
+    background: white;
+    border-color: #bbb;
+  }
+  .ticket-perforation > span {
+    border-color: #aaa;
+  }
+  .ticket-perforation::before,
+  .ticket-perforation::after {
+    background: white;
+    border-color: #bbb;
+  }
+  .ticket-admission {
+    padding: 10px 16px 16px;
+  }
+  .ticket-qr-frame {
+    width: 190px;
+    padding: 4px;
+    margin-top: 14px;
+    border-color: #777;
+    background: white;
+    box-shadow: none;
+  }
+  .ticket-qr-frame::before,
+  .ticket-qr-frame::after {
+    display: none;
+  }
+  .ticket-serial-row {
+    border-color: #bbb;
+  }
+}

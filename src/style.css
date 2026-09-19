@@ -864,87 +864,6 @@ form label > small {
   width: 100%;
   margin: 28px 0;
 }
-.real-ticket {
-  width: 325px;
-  border: 1px solid #ffffff20;
-  border-radius: 10px;
-  overflow: hidden;
-  background: #151416;
-  position: relative;
-  text-align: center;
-  padding: 24px 25px;
-  box-shadow: 0 20px 40px #0003;
-}
-.ticket-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.ticket-top > span {
-  font-size: 6px;
-  letter-spacing: 1px;
-  color: #a1968f;
-}
-.real-ticket h2 {
-  font-family: "Oswald Variable";
-  font-size: 32px;
-  font-weight: 500;
-  line-height: 1.2;
-  text-transform: uppercase;
-  margin: 30px 0 14px;
-}
-.ticket-details {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  font-size: 10px;
-  color: #b8aea6;
-}
-.ticket-perforation {
-  border-top: 1px dashed #ffffff30;
-  margin: 24px -25px;
-  position: relative;
-}
-.ticket-perforation:before,
-.ticket-perforation:after {
-  content: "";
-  position: absolute;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: #09090b;
-  top: -11px;
-  left: -11px;
-  border: 1px solid #ffffff20;
-}
-.ticket-perforation:after {
-  left: auto;
-  right: -11px;
-}
-.ticket-qr {
-  width: 205px;
-  max-width: 100%;
-  height: auto;
-  border-radius: 6px;
-}
-.ticket-guest {
-  font-size: 14px;
-  display: block;
-  margin-top: 16px;
-}
-.ticket-number {
-  display: block;
-  font-size: 9px;
-  color: #a59c96;
-  margin-top: 8px;
-}
-.real-ticket code {
-  display: block;
-  font-size: 12px;
-  letter-spacing: 3px;
-  color: #e47568;
-  margin-top: 18px;
-}
 .delivery-info {
   display: flex;
   gap: 20px;
@@ -2831,24 +2750,6 @@ td .diagnostic {
   .single-ticket-page {
     padding: 0;
     min-height: 0;
-  }
-}
-
-.ticket-own-link {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  font-size: 9px;
-  color: #bdaca1;
-  margin-top: 16px;
-}
-.ticket-own-link:hover {
-  color: var(--red);
-}
-@media print {
-  .ticket-own-link {
-    display: none;
   }
 }
 
