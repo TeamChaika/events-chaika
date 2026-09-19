@@ -2,6 +2,8 @@
 
 Webapp для продажи билетов, управления мероприятиями и проверки QR на входе. Первый экран — анимированная афиша «Ночь красной луны» по предоставленному референсу. Цена первого события: **5 000 ₽**. Дата 31 октября взята из афиши; время 20:00 и вместимость 200 — редактируемые тестовые значения.
 
+Опубликовано: [сайт](https://event.chaika.team), [админка](https://event.chaika.team/admin), [контроль входа](https://event.chaika.team/checkin). Приложение работает в Timeweb Apps, данные — в существующем Supabase на сервере «Отчеты». Реальные платежи и внешняя рассылка пока отключены.
+
 ## Запуск
 
 Node.js 22.23+ (используется встроенный SQLite).
@@ -69,6 +71,6 @@ npm run build
 npm audit --omit=dev
 ```
 
-`src/` — React/TypeScript, `server/` — Express/SQLite/QRM/доставка, `tests/` — интеграционные проверки. Исходная афиша сохранена в `public/assets/poster.png`; новый фон — `public/assets/red-moon.png`. [Описание визуала и промпт](docs/DESIGN.md).
+`src/` — React/TypeScript, `server/` — Express/PostgreSQL/SQLite/QRM/доставка, `tests/` — интеграционные проверки. Исходная афиша сохранена в `public/assets/poster.png`; новый фон — `public/assets/red-moon.png`. [Описание визуала и промпт](docs/DESIGN.md).
 
 Проверка браузером и ограничения зафиксированы в [docs/VALIDATION.md](docs/VALIDATION.md).
