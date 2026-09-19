@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import QRCode from "qrcode";
+import { smsAeroReady, sendSmsAero, readSmsAeroStatus } from "./smsaero.mjs";
 const escape = (s) =>
   String(s).replace(
     /[&<>"']/g,
@@ -18,7 +19,7 @@ export function channelReady(channel) {
         process.env.MAIL_FROM
       )
     : channel === "sms"
-      ? !!process.env.SMS_RU_API_ID
+      ? smsAeroReady()
       : !!(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID);
 }
 export async function deliver(job, order, event, tickets, origin) {
@@ -52,25 +53,10 @@ export async function deliver(job, order, event, tickets, origin) {
     });
     if (!info.accepted?.length) throw new Error("email_rejected");
   } else if (job.channel === "sms") {
-    const res = await fetch("https://sms.ru/sms/send", {
-      method: "POST",
-      signal: AbortSignal.timeout(12000),
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        api_id: process.env.SMS_RU_API_ID,
-        to: order.phone.replace(/\D/g, ""),
-        msg: `${event.title}. Ваши билеты (${order.quantity}): ${link}`,
-        json: "1",
-      }),
-    });
-    const body = await res.json();
-    if (
-      !res.ok ||
-      body.status !== "OK" ||
-      !Object.values(body.sms || {}).length ||
-      Object.values(body.sms).some((v) => v.status !== "OK")
-    )
-      throw new Error("sms_rejected");
+    return sendSmsAero(
+      order.phone,
+      `Чайка Тим. ${event.title}. Ваши билеты (${order.quantity}): ${link}`,
+    );
   } else {
     const res = await fetch(
       `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`,
@@ -110,7 +96,7 @@ export async function processOutbox(store, origin, demo) {
     );
     if (!claimed.changes) continue;
     try {
-      await deliver(
+      const delivery = await deliver(
         job,
         o,
         await store.event(o.event_id),
@@ -121,8 +107,15 @@ export async function processOutbox(store, origin, demo) {
         origin,
       );
       await store.run(
-        "UPDATE outbox SET status='sent',sent_at=?,error=NULL WHERE id=?",
+        "UPDATE outbox SET status=?,sent_at=?,provider_id=?,provider_status=?,status_attempts=0,next_at=?,error=? WHERE id=?",
+        delivery?.status || "sent",
         new Date().toISOString(),
+        delivery?.providerId || null,
+        delivery?.providerStatus ?? null,
+        Date.now() + 30000,
+        delivery?.status === "failed"
+          ? "SMS Aero: сообщение не доставлено или отклонено"
+          : null,
         job.id,
       );
     } catch (error) {
@@ -139,6 +132,50 @@ export async function processOutbox(store, origin, demo) {
         definite
           ? "Сервис отклонил отправку"
           : "Результат отправки неизвестен: проверьте сервис перед повтором",
+        job.id,
+      );
+    }
+  }
+  if (!demo && channelReady("sms")) await reconcileSms(store);
+}
+
+async function reconcileSms(store) {
+  const jobs = await store.all(
+    "SELECT o.*,r.phone FROM outbox o JOIN orders r ON r.id=o.order_id WHERE o.channel='sms' AND o.status='submitted' AND o.provider_id IS NOT NULL AND r.mode='live' AND o.next_at<=? ORDER BY o.next_at LIMIT 4",
+    Date.now(),
+  );
+  for (const job of jobs) {
+    const claimed = await store.run(
+      "UPDATE outbox SET next_at=?,status_attempts=status_attempts+1 WHERE id=? AND status='submitted' AND next_at<=?",
+      Date.now() + 120000,
+      job.id,
+      Date.now(),
+    );
+    if (!claimed.changes) continue;
+    const exhausted = job.status_attempts + 1 >= 100;
+    const next =
+      Date.now() +
+      Math.min(900000, 30000 * 2 ** Math.min(job.status_attempts, 5));
+    try {
+      const result = await readSmsAeroStatus(job.provider_id, job.phone);
+      await store.run(
+        "UPDATE outbox SET status=?,provider_status=?,next_at=?,error=? WHERE id=? AND status='submitted'",
+        result.status === "submitted" && exhausted ? "unknown" : result.status,
+        result.providerStatus,
+        next,
+        result.status === "failed"
+          ? "SMS Aero: сообщение не доставлено или отклонено"
+          : result.status === "submitted" && exhausted
+            ? "SMS Aero не подтвердил доставку: нужна проверка статуса"
+            : null,
+        job.id,
+      );
+    } catch {
+      await store.run(
+        "UPDATE outbox SET status=?,next_at=?,error=? WHERE id=? AND status='submitted'",
+        exhausted ? "unknown" : "submitted",
+        next,
+        "Не удалось подтвердить доставку в SMS Aero; повторная отправка не выполнялась",
         job.id,
       );
     }

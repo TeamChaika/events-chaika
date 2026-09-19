@@ -85,6 +85,22 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
           "ALTER TABLE events ADD COLUMN hero_image TEXT NOT NULL DEFAULT '/assets/red-moon.png'",
         );
       }
+      const deliveryColumns = [
+        ["provider_id", "TEXT"],
+        ["provider_status", "INTEGER"],
+        ["status_attempts", "INTEGER NOT NULL DEFAULT 0"],
+      ];
+      const existing =
+        db.kind === "sqlite" ? await db.all("PRAGMA table_info(outbox)") : [];
+      for (const [name, type] of deliveryColumns) {
+        if (
+          db.kind === "postgres" ||
+          !existing.some((column) => column.name === name)
+        )
+          await db.exec(
+            `ALTER TABLE outbox ADD COLUMN ${db.kind === "postgres" ? "IF NOT EXISTS " : ""}${name} ${type}`,
+          );
+      }
     });
   } catch (error) {
     await db.close();

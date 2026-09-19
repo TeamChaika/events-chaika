@@ -15,6 +15,7 @@ import {
   checkMerchant,
 } from "./qrm.mjs";
 import { channelReady, processOutbox } from "./delivery.mjs";
+import { checkSmsAero } from "./smsaero.mjs";
 
 const hash = (s) => createHash("sha256").update(s).digest("hex");
 const same = (a, b) =>
@@ -506,7 +507,7 @@ export async function createApp({
         sms: channelReady("sms"),
       },
       deliveries: await store.all(
-        "SELECT id,order_id,channel,kind,status,attempts,sent_at,error FROM outbox ORDER BY rowid DESC LIMIT 100",
+        "SELECT id,order_id,channel,kind,status,attempts,sent_at,error,provider_id,provider_status FROM outbox ORDER BY rowid DESC LIMIT 100",
       ),
     });
   });
@@ -666,6 +667,9 @@ export async function createApp({
       requires_receipt: m.requires_receipt,
     });
   });
+  app.post("/api/admin/smsaero/check", staff, admin, async (_req, res) => {
+    res.json(await checkSmsAero());
+  });
   app.post(
     "/api/admin/deliveries/:id/retry",
     staff,
@@ -676,16 +680,26 @@ export async function createApp({
         req.params.id,
       );
       if (!j) throw new AppError(404, "Отправка не найдена");
-      if (["sent", "sending"].includes(j.status))
+      if (["sent", "sending", "submitted", "delivered"].includes(j.status))
         throw new AppError(409, "Сообщение уже отправлено или отправляется");
+      if (j.channel === "sms" && j.provider_id && j.status === "unknown") {
+        // An accepted SMS is only rechecked, never resent because status lookup failed.
+        await store.run(
+          "UPDATE outbox SET status='submitted',status_attempts=0,next_at=0 WHERE id=? AND status='unknown'",
+          j.id,
+        );
+        await store.audit("delivery_recheck", j.id, req.staff.role);
+        return res.json({ ok: true });
+      }
       if (j.status === "unknown" && req.body.confirm !== true)
         throw new AppError(
           409,
           "Сначала проверьте отправку в сервисе и подтвердите повтор",
         );
       await store.run(
-        "UPDATE outbox SET status='pending',next_at=0 WHERE id=?",
+        "UPDATE outbox SET status='pending',next_at=0,provider_id=NULL,provider_status=NULL,status_attempts=0 WHERE id=? AND status=?",
         j.id,
+        j.status,
       );
       await store.audit("delivery_retry", j.id, req.staff.role);
       res.json({ ok: true });

@@ -223,6 +223,8 @@ html {
   z-index: 3;
 }
 .header-link {
+  position: absolute;
+  right: 6%;
   font-size: 10px;
   display: flex;
   align-items: center;
@@ -3161,6 +3163,14 @@ td .diagnostic {
   gap: 18px;
   flex-shrink: 0;
   max-width: 100%;
+}
+.integration-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.public-header {
+  justify-content: center;
 }
 .event-partners .brand {
   width: 170px;

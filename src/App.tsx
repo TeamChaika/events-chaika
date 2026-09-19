@@ -350,7 +350,7 @@ function EventLanding({
         <button className="plain" onClick={() => setPrivacy(true)}>
           Конфиденциальность
         </button>
-        <small>© Чайка, 2026</small>
+        <small>@ Чайка Тим, 2026</small>
       </footer>
       {buy && (
         <Checkout event={event} config={config} close={() => setBuy(false)} />
@@ -620,13 +620,17 @@ function OrderPage() {
                       <Smartphone size={16} />
                     )}{" "}
                     {d.channel === "email" ? "Почта" : "СМС"}:{" "}
-                    {d.status === "sent"
-                      ? "передано сервису"
-                      : d.status === "disabled"
-                        ? "отправка не подключена"
-                        : d.status === "unknown"
-                          ? "нужна проверка отправки"
-                          : "ожидает отправки"}
+                    {d.status === "delivered"
+                      ? "доставлено"
+                      : d.status === "failed"
+                        ? "не доставлено"
+                        : ["sent", "submitted"].includes(d.status)
+                          ? "передано сервису"
+                          : d.status === "disabled"
+                            ? "отправка не подключена"
+                            : d.status === "unknown"
+                              ? "нужна проверка отправки"
+                              : "ожидает отправки"}
                   </span>
                 ))}
             </div>

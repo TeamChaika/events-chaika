@@ -5,6 +5,7 @@ import {
   paymentLink,
   readStatus,
   createPayment,
+  checkMerchant,
 } from "../server/qrm.mjs";
 import { randomUUID } from "node:crypto";
 
@@ -20,6 +21,40 @@ test("status schema requires an exact integer amount", () => {
       results: { operation_status_code: 5, operation_sum: "500000" },
     }),
   );
+});
+test("live terminal must match pinned merchant and have an active subscription", async (t) => {
+  const previous = { ...process.env },
+    original = global.fetch;
+  Object.assign(process.env, {
+    QRM_API_BASE_URL: "https://app.qrm.ooo",
+    QRM_LIVE_API_KEY: "fixture",
+    QRM_EXPECTED_MERCHANT_ID: "expected",
+  });
+  t.after(() => {
+    global.fetch = original;
+    for (const key of [
+      "QRM_API_BASE_URL",
+      "QRM_LIVE_API_KEY",
+      "QRM_EXPECTED_MERCHANT_ID",
+    ])
+      if (previous[key] === undefined) delete process.env[key];
+      else process.env[key] = previous[key];
+  });
+  const merchant = {
+    merchant_id: "expected",
+    firm_name: "Fixture",
+    qrt_is_b2c: true,
+    requires_receipt: false,
+    subscription_end_date: "2099-01-01",
+  };
+  global.fetch = async () =>
+    Response.json({ ...merchant, merchant_id: "another" });
+  await assert.rejects(checkMerchant("live"), /получатель/);
+  global.fetch = async () =>
+    Response.json({ ...merchant, subscription_end_date: "2020-01-01" });
+  await assert.rejects(checkMerchant("live"), /не готов/);
+  global.fetch = async () => Response.json(merchant);
+  assert.equal((await checkMerchant("live")).merchant_id, "expected");
 });
 test("payment URLs reject untrusted domains and dangerous protocols", () => {
   assert.equal(

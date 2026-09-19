@@ -7,7 +7,8 @@
     "dev": "concurrently -k \"node --watch --env-file-if-exists=.env server/index.mjs\" \"vite --host 127.0.0.1\"",
     "build": "tsc -b && vite build",
     "start": "NODE_ENV=production node --env-file-if-exists=.env server/index.mjs",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "integrations:check": "node --env-file-if-exists=.env.integrations.local scripts/check-integrations.mjs"
   },
   "dependencies": {
     "@fontsource-variable/manrope": "^5.3.0",

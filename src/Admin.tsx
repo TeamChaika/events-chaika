@@ -54,6 +54,7 @@ type Delivery = {
   status: string;
   attempts: number;
   error: string | null;
+  provider_id: string | null;
 };
 type Overview = {
   events: EventData[];
@@ -584,7 +585,7 @@ export function Admin() {
                         Ticket,
                       ],
                       [
-                        "СМС · SMS.RU",
+                        "СМС · SMS Aero",
                         "Ссылка на все билеты",
                         data.integrations.sms,
                         Send,
@@ -617,28 +618,49 @@ export function Admin() {
                     Секретные ключи не передаются в браузер.
                   </div>
                   {!demo && (
-                    <button
-                      className="button secondary"
-                      onClick={async () => {
-                        try {
-                          const m = await api<{
-                            firm_name: string;
-                            requires_receipt: boolean;
-                          }>("/admin/qrm/check", {
-                            method: "POST",
-                            body: "{}",
-                          });
-                          setError("");
-                          alert(
-                            `Терминал: ${m.firm_name}. Чеки: ${m.requires_receipt ? "включены" : "выключены"}.`,
-                          );
-                        } catch (e) {
-                          setError((e as Error).message);
-                        }
-                      }}
-                    >
-                      Проверить терминал QRM
-                    </button>
+                    <div className="integration-actions">
+                      <button
+                        className="button secondary"
+                        onClick={async () => {
+                          try {
+                            const m = await api<{
+                              firm_name: string;
+                              requires_receipt: boolean;
+                            }>("/admin/qrm/check", {
+                              method: "POST",
+                              body: "{}",
+                            });
+                            setError("");
+                            alert(
+                              `Терминал: ${m.firm_name}. Чеки: ${m.requires_receipt ? "включены" : "выключены"}.`,
+                            );
+                          } catch (e) {
+                            setError((e as Error).message);
+                          }
+                        }}
+                      >
+                        Проверить терминал QRM
+                      </button>
+                      <button
+                        className="button secondary"
+                        onClick={async () => {
+                          try {
+                            await api("/admin/smsaero/check", {
+                              method: "POST",
+                              body: "{}",
+                            });
+                            setError("");
+                            alert(
+                              "Авторизация SMS Aero подтверждена. СМС не отправлялась.",
+                            );
+                          } catch (e) {
+                            setError((e as Error).message);
+                          }
+                        }}
+                      >
+                        Проверить SMS Aero
+                      </button>
+                    </div>
                   )}
                   <div className="admin-section-title">
                     <h2>Доставка сообщений</h2>
@@ -671,6 +693,9 @@ export function Admin() {
                                 (
                                   {
                                     sent: "Передано сервису",
+                                    submitted: "Передано SMS Aero",
+                                    delivered: "Доставлено",
+                                    failed: "Не доставлено",
                                     disabled: "Отключено",
                                     pending: "В очереди",
                                     retry: "Повтор",
@@ -682,15 +707,23 @@ export function Admin() {
                             </td>
                             <td>{d.error || "—"}</td>
                             <td>
-                              {["disabled", "retry", "unknown"].includes(
-                                d.status,
-                              ) && (
+                              {[
+                                "disabled",
+                                "retry",
+                                "unknown",
+                                "failed",
+                              ].includes(d.status) && (
                                 <button
                                   className="icon-button"
-                                  aria-label="Повторить отправку"
+                                  aria-label={
+                                    d.provider_id && d.status === "unknown"
+                                      ? "Проверить доставку"
+                                      : "Повторить отправку"
+                                  }
                                   onClick={async () => {
                                     if (
                                       d.status === "unknown" &&
+                                      !d.provider_id &&
                                       !confirm(
                                         "Вы проверили сервис и убедились, что сообщение не было отправлено? Повтор может создать дубликат.",
                                       )

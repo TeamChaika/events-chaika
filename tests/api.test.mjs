@@ -88,6 +88,64 @@ async function harness(t, options = {}) {
   return { ...instance, request, order, login, databaseUrl, base };
 }
 
+test("SMS checks require admin and known SMS IDs are rechecked without resending", async (t) => {
+  const h = await harness(t);
+  assert.equal(
+    (await h.request("/admin/smsaero/check", { method: "POST", body: {} }))
+      .status,
+    401,
+  );
+  await h.login("door");
+  assert.equal(
+    (await h.request("/admin/smsaero/check", { method: "POST", body: {} }))
+      .status,
+    403,
+  );
+  const result = await h.order();
+  await h.store.markPaid(result.body.id);
+  const job = await h.store.get(
+    "SELECT id FROM outbox WHERE order_id=? AND channel='sms'",
+    result.body.id,
+  );
+  await h.store.run(
+    "UPDATE outbox SET status='unknown',provider_id='123',status_attempts=100 WHERE id=?",
+    job.id,
+  );
+  await h.login();
+  assert.equal(
+    (
+      await h.request(`/admin/deliveries/${job.id}/retry`, {
+        method: "POST",
+        body: {},
+      })
+    ).status,
+    200,
+  );
+  const updated = await h.store.get("SELECT * FROM outbox WHERE id=?", job.id);
+  assert.equal(updated.status, "submitted");
+  assert.equal(updated.provider_id, "123");
+  assert.equal(updated.status_attempts, 0);
+  assert.equal(
+    (
+      await h.request(`/admin/deliveries/${job.id}/retry`, {
+        method: "POST",
+        body: {},
+      })
+    ).status,
+    409,
+  );
+  await h.store.run("UPDATE outbox SET status='delivered' WHERE id=?", job.id);
+  assert.equal(
+    (
+      await h.request(`/admin/deliveries/${job.id}/retry`, {
+        method: "POST",
+        body: {},
+      })
+    ).status,
+    409,
+  );
+});
+
 test("server calculates total; pending order has no tickets", async (t) => {
   const h = await harness(t);
   const r = await h.order({ ...guest, total: 1, unit_price: 1 });
