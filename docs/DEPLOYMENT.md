@@ -6,12 +6,12 @@
 ## Рабочая схема
 
 - Timeweb Apps: backend Docker, один процесс Node 22 обслуживает React и API, HTTP-порт 8787. Московский preset 2731: 1 CPU / 1 ГБ, 510 ₽/мес по API Timeweb на 19 сентября 2026. HTTPS завершает платформа.
-- PostgreSQL 17: отдельный контейнер на выбранном пользователем сервере **SupaBase — Отчеты**, ID `8012470`. Файлы в `/opt/chaika-events-db`; самостоятельная база `chaika_events`, отдельная роль приложения без superuser/создания других баз. Данные других систем не используются. Ограничения контейнера: 1 CPU / 1 ГБ RAM.
-- Сеть базы: `8012470-co83680.twc1.net:55432`, обязательный TLS, проверка сертификата через доверенный CA. Секреты передаются только через защищённые переменные Apps и root-only конфигурацию сервера.
+- Существующий Supabase на выбранном пользователем сервере **SupaBase — Отчеты**, ID `8012470`: база `postgres`, отдельная схема `chaika_events`, роль `chaika_events_app` без superuser/создания баз/ролей. Схема не включена в публичный Data API; у `anon` и `authenticated` нет доступа. На таблицах включены и принудительно применяются RLS-политики только для backend-роли.
+- Сеть базы: `8012470-co83680.twc1.net:55433`, обязательный TLS, проверка сертификата через доверенный CA. Секреты передаются только через защищённые переменные Apps и root-only конфигурацию сервера. Отдельный PgBouncer в `/opt/chaika-events-supabase` принимает TLS и соединяется с `supabase-db` внутри Docker-сети. Существующие Supabase и Supavisor не перезапускаются. Лимиты pooler: 128 МБ RAM, 0.5 CPU, 12 соединений; session pooling сохраняет search_path роли.
 - Заказы, билеты, сессии, очередь доставки и загруженные афиши хранятся в PostgreSQL. Временная файловая система Apps не содержит пользовательских данных. Исходная афиша и карты 3D-луны входят в Git.
 - `DEMO_MODE=false`, `QRM_MODE=disabled`, `DELIVERY_ENABLED=false`: оплата и отправка сообщений не включаются при размещении.
 
-База создана и TLS проверен. Сборка Apps и привязка домена выполняются; окончательное подтверждение размещения фиксируется после проверки публичного сайта.
+Приложение Apps ID `256931` создано, домен привязан. Технический адрес: `teamchaika-events-chaika-3a5f.twc1.net`. Supabase содержит перенесённое первое мероприятие, TLS и запрет доступа ролей anon/authenticated проверены. Выполняется финальный deploy и проверка HTTPS.
 
 ## Настройки приложения
 
@@ -32,14 +32,16 @@
 Перед обновлением базы сделать резервную копию:
 
 ```sh
-cd /opt/chaika-events-db
+cd /opt/chaika-events-supabase
 umask 077
 mkdir -p backups
-docker compose exec -T database pg_dump -U events_owner -d chaika_events -Fc > "backups/events-$(date -u +%Y%m%dT%H%M%SZ).dump"
+docker exec supabase-db pg_dump -U supabase_admin -d postgres -n chaika_events -Fc > "backups/events-$(date -u +%Y%m%dT%H%M%SZ).dump"
 ```
 
 Копии в этом каталоге защищают от ошибки обновления, но не от потери сервера. До открытия реальных продаж нужно настроить внешнее резервное копирование и проверить восстановление. Сертификат PostgreSQL выдан на 825 дней с 19 сентября 2026; при продлении сохранить доверенный CA либо согласованно обновить `PG_CA_CERT` в Apps.
 
 ## Альтернативное размещение
+
+`deploy/supabase-proxy.compose.yml` и `deploy/supabase-proxy.Dockerfile` описывают TLS-pooler текущей установки. Порт 55433 — только вход для backend через TLS; внутри локальной Docker-сети используется существующий Supabase PostgreSQL.
 
 `compose.production.yml` и `deploy/update.sh` относятся только к ранее подготовленному варианту отдельного VPS с SQLite. Они не используются в Apps. [App Platform запрещает пользовательские volumes в Docker Compose](https://timeweb.cloud/docs/apps/deploying-with-docker-compose).

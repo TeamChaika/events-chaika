@@ -56,6 +56,26 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
         await db.exec(
           "CREATE TABLE IF NOT EXISTS media (filename TEXT PRIMARY KEY, mime TEXT NOT NULL, content BYTEA NOT NULL, created_at TEXT NOT NULL)",
         );
+        // The backend owns a private Supabase schema. Public API roles have no grants.
+        const namespace = await db.get(
+          "SELECT current_schema() AS name, current_user AS role",
+        );
+        if (namespace.name === "chaika_events") {
+          const role = '"' + namespace.role.replaceAll('"', '""') + '"';
+          for (const table of [
+            "events",
+            "orders",
+            "tickets",
+            "sessions",
+            "outbox",
+            "audit",
+            "media",
+          ]) {
+            await db.exec(`ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY; ALTER TABLE ${table} FORCE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS events_backend ON ${table};
+              CREATE POLICY events_backend ON ${table} FOR ALL TO ${role} USING (true) WITH CHECK (true);`);
+          }
+        }
       } else if (
         !(await db.all("PRAGMA table_info(events)")).some(
           (column) => column.name === "hero_image",

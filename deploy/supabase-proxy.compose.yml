@@ -1,0 +1,28 @@
+name: chaika-events-supabase
+services:
+  pooler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "5.42.108.66:55433:5432"
+    volumes:
+      - ./config:/config:ro
+      - ./certs:/certs:ro
+    networks:
+      - supabase
+    mem_limit: 128m
+    cpus: 0.5
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+networks:
+  supabase:
+    external: true
+    name: supabase_default
