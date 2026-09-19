@@ -15,19 +15,36 @@
   visibility: hidden;
   pointer-events: none;
 }
+.cinematic-intro:not(.is-playing) * {
+  animation-play-state: paused !important;
+}
+.cinematic-intro:not(.is-ready) .cinema-art,
+.cinematic-intro:not(.is-ready) .cinema-invitation,
+.cinematic-intro:not(.is-ready) .cinema-caption {
+  visibility: hidden;
+}
+.cinema-preparing {
+  position: absolute;
+  inset: 45% 24px auto;
+  z-index: 2;
+  text-align: center;
+  font-size: 18px;
+  color: #e9ccc4;
+}
 .cinema-art {
   position: absolute;
   inset: 0;
   background: url("/assets/red-moon.png") 70% 35% / cover no-repeat;
   transform-origin: 72% 35%;
-  animation: cinema-approach 4800ms cubic-bezier(0.2, 0.6, 0.3, 1) both;
+  animation: cinema-approach var(--intro-duration, 6500ms)
+    cubic-bezier(0.2, 0.6, 0.3, 1) both;
 }
 .cinema-aura {
   position: absolute;
   inset: 0;
   background: radial-gradient(ellipse at 70% 30%, #ff332b44, transparent 60%);
   mix-blend-mode: screen;
-  animation: cinema-breathe 4800ms ease both;
+  animation: cinema-breathe var(--intro-duration, 6500ms) ease both;
 }
 .cinema-fog {
   position: absolute;
@@ -36,7 +53,7 @@
   opacity: 0.28;
   filter: brightness(0.4);
   mask-image: linear-gradient(transparent, #000 70%);
-  animation: cinema-fog 4800ms ease-out both;
+  animation: cinema-fog var(--intro-duration, 6500ms) ease-out both;
 }
 .cinema-vignette {
   position: absolute;
@@ -169,7 +186,7 @@
   margin: 26px auto 0;
   background: #f02e2438;
   filter: blur(16px);
-  animation: cinema-breathe 4800ms ease both;
+  animation: cinema-breathe var(--intro-duration, 6500ms) ease both;
 }
 .cinema-caption {
   position: absolute;
@@ -206,7 +223,7 @@
   height: 100%;
   background: #ec7160;
   transform-origin: left;
-  animation: cinema-progress 4800ms linear both;
+  animation: cinema-progress var(--intro-duration, 6500ms) linear both;
 }
 .cinema-skip,
 .cinema-ticket-replay {

@@ -39,6 +39,11 @@ import {
 import { MoonScene } from "./MoonScene";
 import { MoonLoader } from "./MoonLoader";
 import { CinematicIntro } from "./CinematicIntro";
+import {
+  useIntroPlayback,
+  MOON_INTRO_IMAGES,
+  MOON_INTRO_DURATION,
+} from "./useIntroPlayback";
 import { TicketCard } from "./TicketCard";
 
 function Bat({ index }: { index: number }) {
@@ -96,18 +101,16 @@ function Home() {
   const [events, setEvents] = useState<EventData[]>([]);
   const [config, setConfig] = useState<Config>();
   const [error, setError] = useState("");
-  const [minimumElapsed, setMinimumElapsed] = useState(false);
+  const {
+    ready: moonReady,
+    playing: moonPlaying,
+    finished: minimumElapsed,
+  } = useIntroPlayback(MOON_INTRO_IMAGES, MOON_INTRO_DURATION);
   const [artworkReady, setArtworkReady] = useState(false);
   const [showIntro, setShowIntro] = useState(true);
   const [revealing, setRevealing] = useState(false);
   const selected = new URLSearchParams(location.search).get("event");
   const event = events.find((e) => e.id === selected) || events[0];
-
-  useEffect(() => {
-    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const timer = setTimeout(() => setMinimumElapsed(true), reduced ? 0 : 2200);
-    return () => clearTimeout(timer);
-  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -156,7 +159,13 @@ function Home() {
   const introActive = showIntro && !error && (!config || Boolean(event));
   return (
     <>
-      {introActive && <MoonLoader revealing={revealing} />}
+      {introActive && (
+        <MoonLoader
+          revealing={revealing}
+          ready={moonReady}
+          playing={moonPlaying}
+        />
+      )}
       {error ? (
         <div className="loading-screen">
           <Brand />
@@ -666,9 +675,7 @@ function OrderPage() {
   );
 }
 function SingleTicket() {
-  const [showIntro, setShowIntro] = useState(
-    () => !matchMedia("(prefers-reduced-motion: reduce)").matches,
-  );
+  const [showIntro, setShowIntro] = useState(true);
   const [data, setData] = useState<
       TicketData & {
         event: EventData;

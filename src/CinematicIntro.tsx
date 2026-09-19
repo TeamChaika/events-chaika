@@ -1,8 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { ArrowUpRight } from "lucide-react";
 import "./cinematic-intro.css";
-
-const CINEMATIC_INTRO_DURATION = 4800;
+import {
+  useIntroPlayback,
+  MOON_INTRO_IMAGES,
+  TICKET_INTRO_DURATION,
+} from "./useIntroPlayback";
 
 // A browser-rendered alternative to video. The heroine remains the original
 // still artwork; the invitation and atmosphere move independently around her.
@@ -18,6 +27,14 @@ export function CinematicIntro({
   onComplete: () => void;
 }) {
   const [revealing, setRevealing] = useState(false);
+  const images = useMemo(
+    () => ["/assets/red-moon.png", ...MOON_INTRO_IMAGES, qrImage],
+    [qrImage],
+  );
+  const { ready, playing, finished } = useIntroPlayback(
+    images,
+    TICKET_INTRO_DURATION,
+  );
   const complete = useRef(onComplete);
   complete.current = onComplete;
 
@@ -27,31 +44,44 @@ export function CinematicIntro({
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") complete.current();
     };
-    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const revealTimer = setTimeout(
-      () => setRevealing(true),
-      reduced ? 0 : CINEMATIC_INTRO_DURATION,
-    );
-    const finishTimer = setTimeout(
-      () => complete.current(),
-      reduced ? 0 : CINEMATIC_INTRO_DURATION + 550,
-    );
     window.addEventListener("keydown", onKey);
     return () => {
-      clearTimeout(revealTimer);
-      clearTimeout(finishTimer);
       document.body.style.overflow = previous;
       window.removeEventListener("keydown", onKey);
     };
   }, []);
 
+  useEffect(() => {
+    if (!finished) return;
+    setRevealing(true);
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const timer = window.setTimeout(
+      () => complete.current(),
+      reduced ? 0 : 550,
+    );
+    return () => window.clearTimeout(timer);
+  }, [finished]);
+
   return (
     <div
-      className={"cinematic-intro" + (revealing ? " is-revealing" : "")}
+      className={
+        "cinematic-intro" +
+        (revealing ? " is-revealing" : "") +
+        (ready ? " is-ready" : "") +
+        (playing ? " is-playing" : "")
+      }
+      style={
+        { "--intro-duration": `${TICKET_INTRO_DURATION}ms` } as CSSProperties
+      }
       role="dialog"
       aria-modal="true"
       aria-label="Открываем ваш билет на Ночь красной луны"
     >
+      {!ready && (
+        <p className="cinema-preparing" role="status">
+          Открываем вашу ночь…
+        </p>
+      )}
       <div className="cinema-art" aria-hidden="true" />
       <div className="cinema-aura" aria-hidden="true" />
       <div className="cinema-fog" aria-hidden="true" />

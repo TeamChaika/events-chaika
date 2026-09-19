@@ -23,6 +23,16 @@
   visibility: hidden;
   pointer-events: none;
 }
+.moon-loader:not(.is-playing) * {
+  animation-play-state: paused !important;
+}
+.moon-loader:not(.is-ready) .loader-cosmos,
+.moon-loader:not(.is-ready) .loader-clouds {
+  visibility: hidden;
+}
+.moon-loader:not(.is-ready) .loader-copy {
+  animation: none;
+}
 .loader-brand {
   position: absolute;
   top: max(32px, 5vh);

@@ -2,7 +2,15 @@ import { useEffect } from "react";
 import { EventPartners } from "./ui";
 import "./moon-loader.css";
 
-export function MoonLoader({ revealing = false }: { revealing?: boolean }) {
+export function MoonLoader({
+  revealing = false,
+  ready,
+  playing,
+}: {
+  revealing?: boolean;
+  ready: boolean;
+  playing: boolean;
+}) {
   useEffect(() => {
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -13,7 +21,12 @@ export function MoonLoader({ revealing = false }: { revealing?: boolean }) {
 
   return (
     <div
-      className={"moon-loader" + (revealing ? " is-revealing" : "")}
+      className={
+        "moon-loader" +
+        (revealing ? " is-revealing" : "") +
+        (ready ? " is-ready" : "") +
+        (playing ? " is-playing" : "")
+      }
       role="status"
       aria-label="Загружаем афишу. Ночь приближается."
     >
