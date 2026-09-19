@@ -90,21 +90,22 @@ export async function deliver(job, order, event, tickets, origin) {
 }
 
 export async function processOutbox(store, origin, demo) {
-  const jobs = store.all(
+  const jobs = await store.all(
     "SELECT * FROM outbox WHERE status IN ('pending','retry') AND next_at<=? ORDER BY rowid LIMIT 10",
     Date.now(),
   );
   for (const job of jobs) {
-    const o = store.get("SELECT * FROM orders WHERE id=?", job.order_id);
+    const o = await store.get("SELECT * FROM orders WHERE id=?", job.order_id);
     if (demo || o.mode !== "live" || !channelReady(job.channel)) {
-      store.run(
+      await store.run(
         "UPDATE outbox SET status='disabled',error='Отправка не подключена или заказ тестовый' WHERE id=?",
         job.id,
       );
       continue;
     }
-    const claimed = store.run(
-      "UPDATE outbox SET status='sending',attempts=attempts+1 WHERE id=? AND status IN ('pending','retry')",
+    const claimed = await store.run(
+      "UPDATE outbox SET status='sending',attempts=attempts+1,next_at=? WHERE id=? AND status IN ('pending','retry')",
+      Date.now() + 120000,
       job.id,
     );
     if (!claimed.changes) continue;
@@ -112,14 +113,14 @@ export async function processOutbox(store, origin, demo) {
       await deliver(
         job,
         o,
-        store.event(o.event_id),
-        store.all(
+        await store.event(o.event_id),
+        await store.all(
           "SELECT * FROM tickets WHERE order_id=? ORDER BY ordinal",
           o.id,
         ),
         origin,
       );
-      store.run(
+      await store.run(
         "UPDATE outbox SET status='sent',sent_at=?,error=NULL WHERE id=?",
         new Date().toISOString(),
         job.id,
@@ -131,7 +132,7 @@ export async function processOutbox(store, origin, demo) {
         "email_rejected",
         "telegram_rejected",
       ].includes(error.message);
-      store.run(
+      await store.run(
         "UPDATE outbox SET status=?,next_at=?,error=? WHERE id=?",
         definite && job.attempts < 2 ? "retry" : "unknown",
         Date.now() + 60000,

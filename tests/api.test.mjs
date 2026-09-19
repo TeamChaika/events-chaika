@@ -1,10 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApp } from "../server/index.mjs";
+import pg from "pg";
 
 const origin = "http://localhost:5173";
 const guest = {
@@ -17,14 +18,30 @@ const guest = {
   consent: true,
 };
 async function harness(t, options = {}) {
-  const instance = createApp({
+  let databaseUrl, cleanupDatabase;
+  if (process.env.TEST_DATABASE_URL) {
+    const url = new URL(process.env.TEST_DATABASE_URL);
+    if (!["127.0.0.1", "localhost"].includes(url.hostname))
+      throw new Error("Tests require a local PostgreSQL instance");
+    const pool = new pg.Pool({ connectionString: url.toString() });
+    const schema = "test_" + randomUUID().replaceAll("-", "");
+    await pool.query(`CREATE SCHEMA ${schema}`);
+    url.searchParams.set("options", `-csearch_path=${schema}`);
+    databaseUrl = url.toString();
+    cleanupDatabase = async () => {
+      await pool.query(`DROP SCHEMA ${schema} CASCADE`);
+      await pool.end();
+    };
+  }
+  const instance = await createApp({
     dbPath: ":memory:",
+    databaseUrl,
     demo: true,
     origin,
     testing: true,
     ...options,
   });
-  instance.store.run(
+  await instance.store.run(
     "UPDATE events SET date=?",
     new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
   );
@@ -34,7 +51,8 @@ async function harness(t, options = {}) {
   let cookie = "";
   t.after(async () => {
     await new Promise((r) => server.close(r));
-    instance.close();
+    await instance.close();
+    await cleanupDatabase?.();
   });
   const request = async (
     path,
@@ -67,7 +85,7 @@ async function harness(t, options = {}) {
     request("/orders", { method: "POST", body, key });
   const login = (role = "admin") =>
     request("/auth/login", { method: "POST", body: { role, demo: true } });
-  return { ...instance, request, order, login };
+  return { ...instance, request, order, login, databaseUrl, base };
 }
 
 test("server calculates total; pending order has no tickets", async (t) => {
@@ -84,16 +102,16 @@ test("idempotent checkout returns the same order, rejects changed input", async 
   const a = await h.order(guest, key),
     b = await h.order(guest, key);
   assert.equal(a.body.id, b.body.id);
-  assert.equal(h.store.get("SELECT COUNT(*) n FROM orders").n, 1);
+  assert.equal((await h.store.get("SELECT COUNT(*) n FROM orders")).n, 1);
   const changed = await h.order({ ...guest, quantity: 3 }, key);
   assert.equal(changed.status, 409);
 });
 test("parallel last-seat reservations cannot oversell", async (t) => {
   const h = await harness(t);
-  h.store.run("UPDATE events SET capacity=2");
+  await h.store.run("UPDATE events SET capacity=2");
   const results = await Promise.all([h.order(), h.order()]);
   assert.deepEqual(results.map((r) => r.status).sort(), [201, 409]);
-  assert.equal(h.store.event("red-moon").available, 0);
+  assert.equal((await h.store.event("red-moon")).available, 0);
 });
 test("payment issues one QR per guest exactly once", async (t) => {
   const h = await harness(t),
@@ -108,7 +126,7 @@ test("payment issues one QR per guest exactly once", async (t) => {
   assert.equal(paid.body.tickets.length, 2);
   assert.notEqual(paid.body.tickets[0].code, paid.body.tickets[1].code);
   assert.equal(
-    h.store.get("SELECT COUNT(*) n FROM outbox WHERE kind='tickets'").n,
+    (await h.store.get("SELECT COUNT(*) n FROM outbox WHERE kind='tickets'")).n,
     3,
   );
 });
@@ -119,7 +137,7 @@ test("QR check-in is atomic and rejects a second entry", async (t) => {
     method: "POST",
     body: {},
   });
-  const code = h.store.get("SELECT code FROM tickets").code;
+  const code = (await h.store.get("SELECT code FROM tickets")).code;
   await h.login("door");
   const results = await Promise.all([
     h.request("/checkin", {
@@ -136,9 +154,9 @@ test("QR check-in is atomic and rejects a second entry", async (t) => {
 test("wrong event and unknown tickets cannot enter", async (t) => {
   const h = await harness(t),
     r = await h.order();
-  h.store.markPaid(r.body.id);
+  await h.store.markPaid(r.body.id);
   await h.login("door");
-  const code = h.store.get("SELECT code FROM tickets").code;
+  const code = (await h.store.get("SELECT code FROM tickets")).code;
   assert.equal(
     (
       await h.request("/checkin", {
@@ -157,7 +175,10 @@ test("wrong event and unknown tickets cannot enter", async (t) => {
     ).status,
     404,
   );
-  assert.equal(h.store.get("SELECT used_at FROM tickets").used_at, null);
+  assert.equal(
+    (await h.store.get("SELECT used_at FROM tickets")).used_at,
+    null,
+  );
 });
 test("staff authorization and CSRF are enforced", async (t) => {
   const h = await harness(t);
@@ -194,8 +215,8 @@ test("invite tickets are free; cash requires receipt confirmation; issue is idem
     b = await issue();
   assert.equal(a.status, 201);
   assert.equal(a.body.url, b.body.url);
-  assert.equal(h.store.get("SELECT total FROM orders").total, 0);
-  assert.equal(h.store.get("SELECT COUNT(*) n FROM tickets").n, 2);
+  assert.equal((await h.store.get("SELECT total FROM orders")).total, 0);
+  assert.equal((await h.store.get("SELECT COUNT(*) n FROM tickets")).n, 2);
   assert.equal(
     (
       await h.request("/admin/issue", {
@@ -211,7 +232,7 @@ test("price changes do not rewrite existing orders", async (t) => {
   const h = await harness(t),
     r = await h.order();
   await h.login();
-  const e = h.store.event("red-moon");
+  const e = await h.store.event("red-moon");
   const updated = await h.request("/admin/events/red-moon", {
     method: "PUT",
     body: { ...e, price: 600000, published: true, sales_open: true },
@@ -220,7 +241,7 @@ test("price changes do not rewrite existing orders", async (t) => {
   const another = await h.order();
   assert.equal(another.body.total, 1200000);
   assert.equal(
-    h.store.get("SELECT total FROM orders WHERE id=?", r.body.id).total,
+    (await h.store.get("SELECT total FROM orders WHERE id=?", r.body.id)).total,
     1000000,
   );
 });
@@ -228,7 +249,7 @@ test("capacity cannot be reduced below reserved seats", async (t) => {
   const h = await harness(t);
   await h.order();
   await h.login();
-  const e = h.store.event("red-moon");
+  const e = await h.store.event("red-moon");
   assert.equal(
     (
       await h.request("/admin/events/red-moon", {
@@ -242,9 +263,9 @@ test("capacity cannot be reduced below reserved seats", async (t) => {
 test("demo expiry releases reservations and refuses simulated late pay", async (t) => {
   const h = await harness(t),
     r = await h.order();
-  h.store.run("UPDATE orders SET expires_at=?", "2000-01-01");
+  await h.store.run("UPDATE orders SET expires_at=?", "2000-01-01");
   await h.tick();
-  assert.equal(h.store.event("red-moon").available, 200);
+  assert.equal((await h.store.event("red-moon")).available, 200);
   assert.equal(
     (
       await h.request("/orders/" + r.body.access_token + "/demo-pay", {
@@ -259,13 +280,13 @@ test("missing consent, invalid quantity and hidden event are rejected", async (t
   const h = await harness(t);
   assert.equal((await h.order({ ...guest, consent: false })).status, 400);
   assert.equal((await h.order({ ...guest, quantity: 0 })).status, 400);
-  h.store.run("UPDATE events SET published=0");
+  await h.store.run("UPDATE events SET published=0");
   assert.equal((await h.order()).status, 409);
 });
 test("QRM callback body cannot mark a demo order as paid", async (t) => {
   const h = await harness(t),
     r = await h.order();
-  const saved = h.store.get("SELECT * FROM orders WHERE id=?", r.body.id);
+  const saved = await h.store.get("SELECT * FROM orders WHERE id=?", r.body.id);
   const path = "/webhooks/qrm/" + saved.id + "/";
   assert.equal(
     (await h.request(path + "wrong", { method: "POST", body: { status: 5 } }))
@@ -276,17 +297,20 @@ test("QRM callback body cannot mark a demo order as paid", async (t) => {
     method: "POST",
     body: { operation_status_code: 5 },
   });
-  assert.equal(h.store.get("SELECT status FROM orders").status, "pending");
+  assert.equal(
+    (await h.store.get("SELECT status FROM orders")).status,
+    "pending",
+  );
 });
 test("demo jobs are not sent externally", async (t) => {
   const h = await harness(t),
     r = await h.order();
-  h.store.markPaid(r.body.id);
+  await h.store.markPaid(r.body.id);
   await h.tick();
   assert.equal(
-    h.store
-      .all("SELECT status FROM outbox")
-      .every((j) => j.status === "disabled"),
+    (await h.store.all("SELECT status FROM outbox")).every(
+      (j) => j.status === "disabled",
+    ),
     true,
   );
 });
@@ -361,28 +385,34 @@ test("QRM confirmation checks saved operation amount, ignores forged callback an
     r = await h.order();
   assert.equal(r.status, 201);
   assert.equal(posts, 1);
-  const o = h.store.get("SELECT * FROM orders WHERE id=?", r.body.id);
+  const o = await h.store.get("SELECT * FROM orders WHERE id=?", r.body.id);
   const callback = "/webhooks/qrm/" + o.id + "/" + o.webhook_token;
   await h.request(callback, {
     method: "POST",
     body: { operation_status_code: 5 },
   });
-  assert.equal(h.store.get("SELECT status FROM orders").status, "pending");
+  assert.equal(
+    (await h.store.get("SELECT status FROM orders")).status,
+    "pending",
+  );
   status = 5;
   amount = 1;
   await h.request(callback, { method: "POST", body: {} });
-  assert.equal(h.store.get("SELECT status FROM orders").status, "pending");
-  assert.equal(h.store.get("SELECT COUNT(*) n FROM tickets").n, 0);
+  assert.equal(
+    (await h.store.get("SELECT status FROM orders")).status,
+    "pending",
+  );
+  assert.equal((await h.store.get("SELECT COUNT(*) n FROM tickets")).n, 0);
   amount = 1000000;
   await h.request(callback, { method: "POST", body: {} });
-  assert.equal(h.store.get("SELECT status FROM orders").status, "paid");
+  assert.equal((await h.store.get("SELECT status FROM orders")).status, "paid");
   status = 3;
   await h.request(callback, { method: "POST", body: {} });
-  assert.equal(h.store.get("SELECT status FROM orders").status, "paid");
-  assert.equal(h.store.get("SELECT COUNT(*) n FROM tickets").n, 2);
-  const code = h.store.get("SELECT code FROM tickets").code;
-  assert.throws(
-    () => h.store.checkin(code, "red-moon", "door", false),
+  assert.equal((await h.store.get("SELECT status FROM orders")).status, "paid");
+  assert.equal((await h.store.get("SELECT COUNT(*) n FROM tickets")).n, 2);
+  const code = (await h.store.get("SELECT code FROM tickets")).code;
+  await assert.rejects(
+    async () => await h.store.checkin(code, "red-moon", "door", false),
     /Тестовый билет/,
   );
 });
@@ -431,7 +461,7 @@ test("uncertain QRM POST is persisted and never blindly repeated", async (t) => 
   assert.equal(a.body.status, "unknown");
   assert.equal(a.body.id, b.body.id);
   assert.equal(posts, 1);
-  assert.equal(h.store.get("SELECT COUNT(*) n FROM tickets").n, 0);
+  assert.equal((await h.store.get("SELECT COUNT(*) n FROM tickets")).n, 0);
 });
 
 test("poster upload requires admin and rejects executable formats and forged image types", async (t) => {
@@ -476,11 +506,10 @@ test("poster upload requires admin and rejects executable formats and forged ima
   });
   assert.equal(uploaded.status, 201);
   assert.match(uploaded.body.url, /^\/media\/[a-f0-9]{48}\.png$/);
-  assert.ok(
-    (await readFile(join(directory, uploaded.body.url.split("/").pop())))
-      .length > 8,
-  );
-  const e = h.store.event("red-moon");
+  const poster = await fetch(h.base + uploaded.body.url);
+  assert.equal(poster.status, 200);
+  assert.ok((await poster.arrayBuffer()).byteLength > 8);
+  const e = await h.store.event("red-moon");
   const saved = await h.request("/admin/events/red-moon", {
     method: "PUT",
     body: {
@@ -497,7 +526,7 @@ test("poster upload requires admin and rejects executable formats and forged ima
 test("event creation and cash issue work without changing the agreed initial price", async (t) => {
   const h = await harness(t);
   await h.login();
-  const e = h.store.event("red-moon");
+  const e = await h.store.event("red-moon");
   const created = await h.request("/admin/events", {
     method: "POST",
     body: {
@@ -517,7 +546,104 @@ test("event creation and cash issue work without changing the agreed initial pri
     body: { ...guest, method: "cash", cash_received: true },
   });
   assert.equal(cash.status, 201);
-  const order = h.store.get("SELECT * FROM orders WHERE method='cash'");
+  const order = await h.store.get("SELECT * FROM orders WHERE method='cash'");
   assert.equal(order.status, "paid");
   assert.equal(order.total, 1000000);
+});
+
+test(
+  "PostgreSQL survives a new app instance and serializes check-in across instances",
+  { skip: !process.env.TEST_DATABASE_URL },
+  async (t) => {
+    const first = await harness(t);
+    const order = await first.order();
+    await first.store.markPaid(order.body.id);
+    const code = (
+      await first.store.get("SELECT code FROM tickets ORDER BY ordinal LIMIT 1")
+    ).code;
+    await first.login();
+    const uploaded = await first.request("/admin/media", {
+      method: "POST",
+      body: {
+        data: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZ6EAAAAASUVORK5CYII=",
+      },
+    });
+    assert.equal(uploaded.status, 201);
+    const second = await createApp({
+      databaseUrl: first.databaseUrl,
+      demo: true,
+      origin,
+      testing: true,
+    });
+    try {
+      assert.equal(
+        (
+          await second.store.get(
+            "SELECT status FROM orders WHERE id=?",
+            order.body.id,
+          )
+        ).status,
+        "paid",
+      );
+      const media = await second.store.get(
+        "SELECT content FROM media WHERE filename=?",
+        uploaded.body.url.split("/").pop(),
+      );
+      assert.ok(media.content.length > 8);
+      const outcomes = await Promise.all([
+        first.store.checkin(code, "red-moon", "door", true),
+        second.store.checkin(code, "red-moon", "door", true),
+      ]);
+      assert.deepEqual(outcomes.map((r) => r.accepted).sort(), [false, true]);
+    } finally {
+      await second.close();
+    }
+  },
+);
+
+test("startup preserves another instance's in-flight payment and delivery", async (t) => {
+  const h = await harness(t);
+  const r = await h.order();
+  await h.store.run(
+    "UPDATE orders SET status='creating',mode='live' WHERE id=?",
+    r.body.id,
+  );
+  await h.store.run(
+    "UPDATE outbox SET status='sending',next_at=?",
+    Date.now() + 120000,
+  );
+  await h.tick();
+  assert.equal(
+    (await h.store.get("SELECT status FROM orders")).status,
+    "creating",
+  );
+  assert.equal(
+    (await h.store.get("SELECT status FROM outbox")).status,
+    "sending",
+  );
+  await h.store.run("UPDATE orders SET created_at='2000-01-01'");
+  await h.store.run("UPDATE outbox SET next_at=0");
+  await h.tick();
+  assert.equal(
+    (await h.store.get("SELECT status FROM orders")).status,
+    "unknown",
+  );
+  assert.equal(
+    (await h.store.get("SELECT status FROM outbox")).status,
+    "unknown",
+  );
+});
+
+test("ephemeral hosting fails closed without PostgreSQL", async () => {
+  const old = process.env.REQUIRE_POSTGRES;
+  process.env.REQUIRE_POSTGRES = "true";
+  try {
+    await assert.rejects(
+      () => createApp({ databaseUrl: "", testing: true }),
+      /DATABASE_URL is required/,
+    );
+  } finally {
+    if (old === undefined) delete process.env.REQUIRE_POSTGRES;
+    else process.env.REQUIRE_POSTGRES = old;
+  }
 });

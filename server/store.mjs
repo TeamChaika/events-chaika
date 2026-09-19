@@ -1,7 +1,5 @@
-import { DatabaseSync } from "node:sqlite";
+import { openDatabase } from "./database.mjs";
 import { randomBytes, randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
 
 export const token = () => randomBytes(24).toString("hex");
 export class AppError extends Error {
@@ -10,10 +8,9 @@ export class AppError extends Error {
     this.status = status;
   }
 }
-export function openStore(path = "./data/events.sqlite") {
-  if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
-  const db = new DatabaseSync(path);
-  db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
+export async function openStore(path = "./data/events.sqlite", databaseUrl) {
+  const db = await openDatabase(path, databaseUrl);
+  const schema = `
     CREATE TABLE IF NOT EXISTS events (
       id TEXT PRIMARY KEY, title TEXT NOT NULL, subtitle TEXT NOT NULL, date TEXT NOT NULL, time TEXT NOT NULL,
       venue TEXT NOT NULL, address TEXT NOT NULL, price INTEGER NOT NULL CHECK(price>=0), capacity INTEGER NOT NULL,
@@ -38,32 +35,44 @@ export function openStore(path = "./data/events.sqlite") {
       next_at INTEGER NOT NULL DEFAULT 0, sent_at TEXT, error TEXT, UNIQUE(order_id,channel,kind));
     CREATE TABLE IF NOT EXISTS audit (id TEXT PRIMARY KEY, action TEXT NOT NULL, entity TEXT NOT NULL, actor TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS orders_event ON orders(event_id,status);
-    CREATE INDEX IF NOT EXISTS tickets_order ON tickets(order_id);`);
-  if (
-    !db
-      .prepare("PRAGMA table_info(events)")
-      .all()
-      .some((column) => column.name === "hero_image")
-  )
-    db.exec(
-      "ALTER TABLE events ADD COLUMN hero_image TEXT NOT NULL DEFAULT '/assets/red-moon.png'",
-    );
-  const get = (sql, ...args) => db.prepare(sql).get(...args);
-  const all = (sql, ...args) => db.prepare(sql).all(...args);
-  const run = (sql, ...args) => db.prepare(sql).run(...args);
-  const transaction = (fn) => {
-    db.exec("BEGIN IMMEDIATE");
-    try {
-      const result = fn();
-      db.exec("COMMIT");
-      return result;
-    } catch (e) {
-      db.exec("ROLLBACK");
-      throw e;
-    }
-  };
-  const audit = (action, entity, actor = "system") =>
-    run(
+    CREATE INDEX IF NOT EXISTS tickets_order ON tickets(order_id);`;
+  try {
+    await db.transaction(async () => {
+      await db.exec(
+        db.kind === "postgres"
+          ? schema
+              .replace("expires_at INTEGER", "expires_at BIGINT")
+              .replace("next_at INTEGER", "next_at BIGINT")
+              .replace(
+                "CREATE TABLE IF NOT EXISTS outbox (",
+                "CREATE TABLE IF NOT EXISTS outbox (sequence BIGSERIAL UNIQUE,",
+              )
+          : schema,
+      );
+      if (db.kind === "postgres") {
+        await db.exec(
+          "ALTER TABLE events ADD COLUMN IF NOT EXISTS hero_image TEXT NOT NULL DEFAULT '/assets/red-moon.png'",
+        );
+        await db.exec(
+          "CREATE TABLE IF NOT EXISTS media (filename TEXT PRIMARY KEY, mime TEXT NOT NULL, content BYTEA NOT NULL, created_at TEXT NOT NULL)",
+        );
+      } else if (
+        !(await db.all("PRAGMA table_info(events)")).some(
+          (column) => column.name === "hero_image",
+        )
+      ) {
+        await db.exec(
+          "ALTER TABLE events ADD COLUMN hero_image TEXT NOT NULL DEFAULT '/assets/red-moon.png'",
+        );
+      }
+    });
+  } catch (error) {
+    await db.close();
+    throw error;
+  }
+  const { get, all, run, transaction } = db;
+  const audit = async (action, entity, actor = "system") =>
+    await run(
       "INSERT INTO audit VALUES (?,?,?,?,?)",
       randomUUID(),
       action,
@@ -71,22 +80,24 @@ export function openStore(path = "./data/events.sqlite") {
       actor,
       new Date().toISOString(),
     );
-  const reserved = (id) =>
-    get(
-      "SELECT COALESCE(SUM(quantity),0) AS count FROM orders WHERE event_id=? AND status IN ('creating','pending','unknown','paid')",
-      id,
+  const reserved = async (id) =>
+    (
+      await get(
+        "SELECT COALESCE(SUM(quantity),0) AS count FROM orders WHERE event_id=? AND status IN ('creating','pending','unknown','paid')",
+        id,
+      )
     ).count;
-  const event = (id) => {
-    const e = get("SELECT * FROM events WHERE id=?", id);
+  const event = async (id) => {
+    const e = await get("SELECT * FROM events WHERE id=?", id);
     return e
-      ? { ...e, available: Math.max(0, e.capacity - reserved(id)) }
+      ? { ...e, available: Math.max(0, e.capacity - (await reserved(id))) }
       : null;
   };
-  const enqueue = (id, kind) => {
+  const enqueue = async (id, kind) => {
     for (const ch of ["created", "review"].includes(kind)
       ? ["telegram"]
       : ["email", "sms", "telegram"])
-      run(
+      await run(
         "INSERT OR IGNORE INTO outbox(id,order_id,channel,kind) VALUES (?,?,?,?)",
         randomUUID(),
         id,
@@ -94,48 +105,48 @@ export function openStore(path = "./data/events.sqlite") {
         kind,
       );
   };
-  const issue = (id) => {
-    const o = get("SELECT * FROM orders WHERE id=?", id);
+  const issue = async (id) => {
+    const o = await get("SELECT * FROM orders WHERE id=?", id);
     if (!o || o.status !== "paid")
       throw new AppError(409, "Заказ ещё не оплачен");
     for (let i = 1; i <= o.quantity; i++)
-      run(
+      await run(
         "INSERT OR IGNORE INTO tickets(id,code,order_id,ordinal) VALUES (?,?,?,?)",
         randomUUID(),
         token(),
         id,
         i,
       );
-    enqueue(id, "tickets");
+    await enqueue(id, "tickets");
   };
-  const markPaid = (id) =>
-    transaction(() => {
-      const o = get("SELECT * FROM orders WHERE id=?", id);
+  const markPaid = async (id) =>
+    await transaction(async () => {
+      const o = await get("SELECT * FROM orders WHERE id=?", id);
       if (!o) throw new AppError(404, "Заказ не найден");
       // A late confirmed payment needs operator reconciliation when its seats were released.
       if (
         ["expired", "cancelled", "failed"].includes(o.status) &&
-        event(o.event_id).available < o.quantity
+        (await event(o.event_id)).available < o.quantity
       ) {
-        run(
+        await run(
           "UPDATE orders SET status='paid_review',paid_at=?,diagnostic='Оплата после освобождения мест: требуется проверка вместимости' WHERE id=?",
           new Date().toISOString(),
           id,
         );
-        enqueue(id, "review");
+        await enqueue(id, "review");
         return;
       }
       if (o.status === "paid_review") return;
-      run(
+      await run(
         "UPDATE orders SET status='paid',paid_at=COALESCE(paid_at,?),diagnostic=NULL WHERE id=?",
         new Date().toISOString(),
         id,
       );
-      issue(id);
+      await issue(id);
     });
-  const checkin = (code, eventId, actor, allowTest = false) =>
-    transaction(() => {
-      const t = get(
+  const checkin = async (code, eventId, actor, allowTest = false) =>
+    await transaction(async () => {
+      const t = await get(
         `SELECT t.*,o.event_id,o.status,o.mode,o.first_name,o.last_name,o.method,e.title FROM tickets t JOIN orders o ON o.id=t.order_id JOIN events e ON e.id=o.event_id WHERE t.code=?`,
         code,
       );
@@ -147,13 +158,13 @@ export function openStore(path = "./data/events.sqlite") {
       if (t.status !== "paid") throw new AppError(409, "Билет недействителен");
       if (t.used_at) return { accepted: false, ...t };
       const now = new Date().toISOString();
-      run(
+      await run(
         "UPDATE tickets SET used_at=?,used_by=? WHERE id=? AND used_at IS NULL",
         now,
         actor,
         t.id,
       );
-      audit("checkin", t.id, actor);
+      await audit("checkin", t.id, actor);
       return { ...t, accepted: true, used_at: now };
     });
   return {
@@ -171,9 +182,9 @@ export function openStore(path = "./data/events.sqlite") {
   };
 }
 
-export function seed(store) {
-  if (store.get("SELECT id FROM events LIMIT 1")) return;
-  store.run(
+export async function seed(store) {
+  if (await store.get("SELECT id FROM events LIMIT 1")) return;
+  await store.run(
     "INSERT INTO events(id,title,subtitle,date,time,venue,address,price,capacity,description,dresscode,age,published,sales_open,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
     "red-moon",
     "Ночь красной луны",
