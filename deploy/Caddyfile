@@ -1,0 +1,4 @@
+event.chaika.team {
+  encode zstd gzip
+  reverse_proxy app:8787
+}

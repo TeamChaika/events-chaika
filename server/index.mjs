@@ -183,6 +183,10 @@ export function createApp({
       ? next()
       : next(new AppError(403, "Нужен доступ администратора"));
   const mode = () => (demo ? "demo" : process.env.QRM_MODE || "disabled");
+  app.get("/api/health", (_req, res) => {
+    store.get("SELECT 1 AS ready");
+    res.json({ ok: true });
+  });
   const availability = () => {
     if (demo) return true;
     try {
