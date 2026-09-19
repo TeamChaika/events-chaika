@@ -38,6 +38,7 @@ import {
 } from "./ui";
 import { MoonScene } from "./MoonScene";
 import { MoonLoader } from "./MoonLoader";
+import { CinematicIntro } from "./CinematicIntro";
 import { TicketCard } from "./TicketCard";
 
 function Bat({ index }: { index: number }) {
@@ -665,6 +666,9 @@ function OrderPage() {
   );
 }
 function SingleTicket() {
+  const [showIntro, setShowIntro] = useState(
+    () => !matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
   const [data, setData] = useState<
       TicketData & {
         event: EventData;
@@ -686,26 +690,55 @@ function SingleTicket() {
       .then(setData)
       .catch((e) => setError(e.message));
   }, []);
+  const introActive = Boolean(
+    showIntro &&
+      data &&
+      data.event.id === "red-moon" &&
+      !data.used_at &&
+      !error,
+  );
   return (
-    <div className="single-ticket-page">
-      <ErrorNotice text={error} />
-      {data ? (
-        <>
-          <TicketCard
-            ticket={data}
-            event={data.event}
-            name={data.first_name + " " + data.last_name}
-            demo={data.mode !== "live"}
-          />
-          <button className="button secondary" onClick={() => window.print()}>
-            <Download size={16} />
-            Сохранить билет
-          </button>
-        </>
-      ) : (
-        !error && <Spinner />
+    <>
+      {introActive && data && (
+        <CinematicIntro
+          qrImage={data.qr_image}
+          age={data.event.age}
+          demo={data.mode !== "live"}
+          onComplete={() => setShowIntro(false)}
+        />
       )}
-    </div>
+      <div
+        className="single-ticket-page"
+        inert={introActive}
+        aria-hidden={introActive || undefined}
+      >
+        <ErrorNotice text={error} />
+        {data ? (
+          <>
+            <TicketCard
+              ticket={data}
+              event={data.event}
+              name={data.first_name + " " + data.last_name}
+              demo={data.mode !== "live"}
+            />
+            <button className="button secondary" onClick={() => window.print()}>
+              <Download size={16} />
+              Сохранить билет
+            </button>
+            {data.event.id === "red-moon" && !data.used_at && (
+              <button
+                className="cinema-ticket-replay"
+                onClick={() => setShowIntro(true)}
+              >
+                Повторить интро <ArrowUpRight size={14} aria-hidden="true" />
+              </button>
+            )}
+          </>
+        ) : (
+          !error && <Spinner />
+        )}
+      </div>
+    </>
   );
 }
 export default function App() {

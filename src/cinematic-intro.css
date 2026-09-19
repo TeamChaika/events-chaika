@@ -1,0 +1,410 @@
+.cinematic-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  isolation: isolate;
+  overflow: hidden;
+  color: #fff2ed;
+  background: #080507;
+  transition:
+    opacity 550ms ease,
+    visibility 550ms;
+}
+.cinematic-intro.is-revealing {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.cinema-art {
+  position: absolute;
+  inset: 0;
+  background: url("/assets/red-moon.png") 70% 35% / cover no-repeat;
+  transform-origin: 72% 35%;
+  animation: cinema-approach 4800ms cubic-bezier(0.2, 0.6, 0.3, 1) both;
+}
+.cinema-aura {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 70% 30%, #ff332b44, transparent 60%);
+  mix-blend-mode: screen;
+  animation: cinema-breathe 4800ms ease both;
+}
+.cinema-fog {
+  position: absolute;
+  inset: 10% -35% -20%;
+  background: url("/assets/red-clouds.svg") center / cover;
+  opacity: 0.28;
+  filter: brightness(0.4);
+  mask-image: linear-gradient(transparent, #000 70%);
+  animation: cinema-fog 4800ms ease-out both;
+}
+.cinema-vignette {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    0deg,
+    #080507 0%,
+    #080507cc 12%,
+    transparent 48%,
+    #08050755 100%
+  );
+}
+.cinema-topline {
+  position: absolute;
+  inset: 32px 40px auto;
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  font-size: 8px;
+  letter-spacing: 2px;
+  color: #ddc6c0;
+}
+.cinema-topline i {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  background: #f04d41;
+  border-radius: 50%;
+  margin-right: 9px;
+}
+.cinema-invitation {
+  position: absolute;
+  top: 48%;
+  left: 31%;
+  width: 216px;
+  transform: translate(-50%, -50%);
+  perspective: 900px;
+}
+.cinema-pass {
+  position: relative;
+  overflow: hidden;
+  padding: 18px;
+  border: 1px solid #f6a08c88;
+  border-radius: 14px;
+  background: linear-gradient(150deg, #501923ee, #190b12f5 42%, #261018fa);
+  box-shadow:
+    inset 0 0 0 4px #110a1088,
+    0 25px 80px #000b,
+    0 0 35px #ff412522;
+  animation: cinema-offer 2600ms 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.cinema-pass header,
+.cinema-pass footer {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cinema-pass header {
+  font-size: 8px;
+  letter-spacing: 3px;
+  color: #ffb5a2;
+}
+.cinema-pass p {
+  position: relative;
+  margin: 19px 0 20px;
+  font:
+    400 27px/1.06 "Oswald Variable",
+    sans-serif;
+  letter-spacing: -0.5px;
+}
+.cinema-pass p em {
+  font-style: normal;
+  color: #ff7165;
+}
+.cinema-pass-moon {
+  position: absolute;
+  width: 110px;
+  height: 110px;
+  top: -35px;
+  right: -30px;
+  border-radius: 50%;
+  background:
+    linear-gradient(#ec382c, #bd1d25),
+    url("/assets/moon-color.jpg") center / cover;
+  background-blend-mode: multiply;
+  box-shadow: 0 0 35px #e8312e55;
+  opacity: 0.6;
+}
+.cinema-qr {
+  position: relative;
+  width: 144px;
+  height: 144px;
+  margin: 0 auto 19px;
+  padding: 6px;
+  background: #fff;
+  border-radius: 3px;
+}
+.cinema-qr img {
+  display: block;
+  width: 132px;
+  height: 132px;
+}
+.cinema-pass footer {
+  border-top: 1px solid #ffffff20;
+  padding-top: 13px;
+  font-size: 6px;
+  letter-spacing: 1.2px;
+  color: #d8b8b4;
+}
+.cinema-pass footer > :last-child {
+  font-size: 10px;
+}
+.cinema-pass-shine {
+  position: absolute;
+  inset: -50%;
+  background: linear-gradient(
+    110deg,
+    transparent 42%,
+    #ffe2cc26 50%,
+    transparent 58%
+  );
+  pointer-events: none;
+  animation: cinema-shine 1900ms 1700ms ease-out both;
+}
+.cinema-pass-shadow {
+  width: 75%;
+  height: 16px;
+  margin: 26px auto 0;
+  background: #f02e2438;
+  filter: blur(16px);
+  animation: cinema-breathe 4800ms ease both;
+}
+.cinema-caption {
+  position: absolute;
+  bottom: 56px;
+  left: 24px;
+  right: 24px;
+  text-align: center;
+  animation: cinema-caption 800ms 600ms ease both;
+}
+.cinema-caption > span {
+  font-size: 8px;
+  letter-spacing: 2.6px;
+  color: #cf9f9c;
+}
+.cinema-caption p {
+  margin: 14px 0 20px;
+  font-size: clamp(22px, 3vw, 34px);
+  font-weight: 400;
+  letter-spacing: -1.2px;
+}
+.cinema-caption em {
+  font-style: normal;
+  color: #ff8974;
+}
+.cinema-progress {
+  overflow: hidden;
+  width: 120px;
+  height: 1px;
+  margin: auto;
+  background: #ffffff20;
+}
+.cinema-progress i {
+  display: block;
+  height: 100%;
+  background: #ec7160;
+  transform-origin: left;
+  animation: cinema-progress 4800ms linear both;
+}
+.cinema-skip,
+.cinema-ticket-replay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid #eb9b8644;
+  border-radius: 99px;
+  background: #1b0b12d9;
+  color: #e9ccc4;
+  font-size: 10px;
+  padding: 11px 16px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.cinema-skip {
+  position: absolute;
+  bottom: 20px;
+  right: 24px;
+}
+.cinema-ticket-replay {
+  margin-top: 12px;
+}
+.cinema-skip:focus-visible,
+.cinema-ticket-replay:focus-visible {
+  outline: 2px solid #ffac97;
+  outline-offset: 4px;
+}
+.cinema-skip:hover,
+.cinema-ticket-replay:hover {
+  background: #431621;
+}
+@keyframes cinema-approach {
+  from {
+    opacity: 0.2;
+    transform: scale(1.04) translateX(1%);
+  }
+  25% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    transform: scale(1.13) translateX(-1%);
+  }
+}
+@keyframes cinema-breathe {
+  from {
+    opacity: 0;
+  }
+  45% {
+    opacity: 0.75;
+  }
+  to {
+    opacity: 0.45;
+  }
+}
+@keyframes cinema-fog {
+  from {
+    transform: translateX(-6%);
+  }
+  to {
+    transform: translateX(6%);
+  }
+}
+@keyframes cinema-offer {
+  from {
+    opacity: 0;
+    transform: translate3d(130px, 48px, -220px) rotateY(-65deg) rotateZ(-15deg)
+      scale(0.65);
+  }
+  25% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotateY(8deg) rotateZ(-5deg) scale(1);
+  }
+}
+@keyframes cinema-shine {
+  from {
+    transform: translateX(-60%);
+  }
+  to {
+    transform: translateX(60%);
+  }
+}
+@keyframes cinema-caption {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes cinema-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+@media (max-width: 600px) {
+  .cinema-art {
+    background-position: 75% top;
+    background-size: auto 80%;
+  }
+  .cinema-topline {
+    inset: 24px 22px auto;
+    font-size: 7px;
+  }
+  .cinema-topline > :last-child {
+    display: none;
+  }
+  .cinema-invitation {
+    left: 46%;
+    top: 58%;
+    width: 190px;
+  }
+  .cinema-pass {
+    padding: 15px;
+  }
+  .cinema-pass p {
+    font-size: 23px;
+    margin: 16px 0;
+  }
+  .cinema-qr {
+    width: 128px;
+    height: 128px;
+    margin-bottom: 16px;
+  }
+  .cinema-qr img {
+    width: 116px;
+    height: 116px;
+  }
+  .cinema-caption {
+    bottom: 85px;
+  }
+  .cinema-caption > span {
+    font-size: 6px;
+    letter-spacing: 1.8px;
+  }
+  .cinema-caption p {
+    margin-bottom: 16px;
+    font-size: 22px;
+  }
+  .cinema-skip {
+    right: 50%;
+    transform: translateX(50%);
+    bottom: 18px;
+  }
+}
+@media (max-height: 760px) {
+  .cinema-invitation {
+    top: 44%;
+    width: 180px;
+  }
+  .cinema-pass {
+    padding: 13px;
+  }
+  .cinema-pass p {
+    font-size: 21px;
+    margin: 10px 0;
+  }
+  .cinema-qr {
+    width: 104px;
+    height: 104px;
+    margin-bottom: 12px;
+  }
+  .cinema-qr img {
+    width: 92px;
+    height: 92px;
+  }
+  .cinema-caption {
+    bottom: 75px;
+  }
+  .cinema-caption p {
+    font-size: 22px;
+    margin: 8px 0 12px;
+  }
+  .cinema-topline {
+    top: 15px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cinematic-intro {
+    transition: none;
+  }
+  .cinematic-intro * {
+    animation: none !important;
+  }
+}
+@media print {
+  .cinematic-intro,
+  .cinema-ticket-replay {
+    display: none !important;
+  }
+}
