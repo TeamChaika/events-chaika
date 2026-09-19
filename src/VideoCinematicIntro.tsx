@@ -64,8 +64,8 @@ export function VideoCinematicIntro({
       <div className="cinema-video-stage" aria-hidden="true">
         <video
           ref={video}
-          src="/assets/ticket-intro-seedance25.mp4"
-          poster="/assets/ticket-intro-poster.jpg"
+          src="/assets/ticket-intro-printed-qr.mp4"
+          poster="/assets/ticket-intro-printed-qr.jpg"
           muted
           playsInline
           preload="auto"

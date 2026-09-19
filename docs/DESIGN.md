@@ -18,6 +18,14 @@
 
 Текстуры: [NASA's Scientific Visualization Studio — CGI Moon Kit](https://svs.gsfc.nasa.gov/4720/), Ernie Wright (USRA), Noah Petro (NASA/GSFC), LRO/LROC и LOLA. Цвет: `lroc_color_2k.jpg`; рельеф: `ldem_3_8bit.jpg`. Локальные копии `moon-color.jpg` (2048 × 1024) и `moon-height.jpg` (1024 × 512) получены из [зеркала с описанием происхождения](https://github.com/MaxwellLee/physics-lab/blob/main/assets/textures/SOURCES.md): цвет повторно сжат в JPEG, рельеф сохранён без изменений. В работе сайта внешних запросов за текстурами нет.
 
+## Видео перед персональным билетом
+
+На странице отдельного билета используется ролик Seedance 2.5: героиня поворачивается к гостю и протягивает физический билет RED MOON. Луна, надпись и декоративный QR уже находятся внутри видео; наложения QR средствами страницы нет. Рабочий персональный QR появляется на странице после интро.
+
+Текущий ролик — `public/assets/ticket-intro-printed-qr.mp4`, постер — `public/assets/ticket-intro-printed-qr.jpg`. Длительность 8 секунд, 720 × 1280, H.264, без звука. Интро главной страницы с луной остаётся отдельным.
+
+По просьбе пользователя предыдущий ролик сохранён в `public/assets/ticket-intro-seedance25.mp4`, его постер — `public/assets/ticket-intro-poster.jpg`. Для отката поменять только `src` и `poster` в `src/VideoCinematicIntro.tsx` на эти сохранённые файлы; не удалять старые версии при обновлении видео.
+
 ## Финальный промпт генерации
 
 Create a premium cinematic website hero asset inspired by a gothic Halloween masquerade fashion poster. Landscape 1536x1024. Pure near-black background (#080808), a huge detailed blood red full moon occupying the CENTER-RIGHT of the image, fiery soft red corona glow, real crater texture, photoreal astronomical surface. In front of the moon on the RIGHT half stands a mysterious high-fashion woman in an elegant black voluminous Victorian gothic dress with structured puff sleeves, white sharp collar, black futuristic eye mask, slick black hair. Monochrome silver-black fashion photography lit with subtle crimson rim lighting. Cropped at hips at the bottom. Dramatic fashion editorial, delicate photographic grain, extremely striking. Keep LEFT 40 percent almost pure black empty negative space with just faint red atmospheric light for website typography to be added in code. The moon must be fully visible at the top, not cropped, woman's head at 25% height. The bottom gracefully fades to pure black. NO TEXT, NO LOGOS, NO LETTERING, NO BATS (bats will be animated separately in code). Output is a finished raster website background, not a website mockup.
