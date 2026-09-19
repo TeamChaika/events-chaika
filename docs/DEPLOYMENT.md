@@ -9,7 +9,7 @@
 - Существующий Supabase на выбранном пользователем сервере **SupaBase — Отчеты**, ID `8012470`: база `postgres`, отдельная схема `chaika_events`, роль `chaika_events_app` без superuser/создания баз/ролей. Схема не включена в публичный Data API; у `anon` и `authenticated` нет доступа. На таблицах включены и принудительно применяются RLS-политики только для backend-роли.
 - Сеть базы: `8012470-co83680.twc1.net:55433`, обязательный TLS, проверка сертификата через доверенный CA. Секреты передаются только через защищённые переменные Apps и root-only конфигурацию сервера. Отдельный PgBouncer в `/opt/chaika-events-supabase` принимает TLS и соединяется с `supabase-db` внутри Docker-сети. Существующие Supabase и Supavisor не перезапускаются. Лимиты pooler: 128 МБ RAM, 0.5 CPU, 12 соединений; session pooling сохраняет search_path роли.
 - Заказы, билеты, сессии, очередь доставки и загруженные афиши хранятся в PostgreSQL. Временная файловая система Apps не содержит пользовательских данных. Исходная афиша и карты 3D-луны входят в Git.
-- `DEMO_MODE=false`. По поручению владельца подключены live-настройки существующего терминала QRM и SMS Aero: `QRM_MODE=live`, `DELIVERY_ENABLED=true`. Канал доставки доступен только при наличии всех его настроек; Telegram и SMTP отдельно не настраивались.
+- `DEMO_MODE=false`. По поручению владельца настроены существующий live-терминал QRM и SMS Aero. SMS включены (`DELIVERY_ENABLED=true`), но новые платежи временно закрыты (`QRM_MODE=disabled`): после успешного создания QR сервер QRM не ответил на документированный запрос SSE-статуса даже для просроченного проверочного QR. Ключи и привязка получателя сохранены; возвращать `QRM_MODE=live` после восстановления и проверки серверной сверки. Telegram и SMTP отдельно не настраивались.
 
 Приложение Apps ID `256931` работает. Технический адрес: https://teamchaika-events-chaika-3a5f.twc1.net. Версия с Supabase успешно опубликована и прошла повторное развёртывание: скрытое тестовое мероприятие и загруженный PNG сохранились. После проверки эти две тестовые записи удалены; в рабочей базе осталось первое мероприятие, заказов и билетов нет. Резервная копия схемы сохранена на сервере.
 
@@ -25,7 +25,7 @@ DNS `event.chaika.team` направлен на IP Apps `109.71.247.127`, TTL 30
 - `DATABASE_URL`, `PG_CA_CERT` (PEM доверенного CA), `REQUIRE_POSTGRES=true`.
 - `TRUST_PROXY_HOPS=1` за доверенным proxy Timeweb.
 - Сильные различные `ADMIN_PASSWORD` и `SCANNER_PASSWORD`.
-- `DEMO_MODE=false`, `QRM_MODE=live`, `QRM_API_BASE_URL`, `QRM_LIVE_API_KEY`, `QRM_EXPECTED_MERCHANT_ID`.
+- `DEMO_MODE=false`, временно `QRM_MODE=disabled`, сохранены `QRM_API_BASE_URL`, `QRM_LIVE_API_KEY`, `QRM_EXPECTED_MERCHANT_ID`.
 - `DELIVERY_ENABLED=true`, `SMSAERO_EMAIL`, `SMSAERO_API_KEY`, `SMSAERO_SIGN`. Значения секретов не коммитятся.
 
 Не переносить локальную SQLite-базу с демонстрационными заказами. На Apps отсутствие PostgreSQL останавливает запуск вместо незаметного перехода на временную БД.
