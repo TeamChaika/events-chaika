@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
   ArrowRight,
-  ArrowDown,
   CalendarDays,
   MapPin,
   Clock3,
@@ -34,6 +33,7 @@ import {
 } from "./types";
 import { Brand, ErrorNotice, Spinner, Modal, GuestFields } from "./ui";
 import { MoonScene } from "./MoonScene";
+import { MoonLoader } from "./MoonLoader";
 
 function Bat({ index }: { index: number }) {
   return (
@@ -53,7 +53,7 @@ function Bat({ index }: { index: number }) {
 function Countdown({ event }: { event: EventData }) {
   const [time, setTime] = useState(Date.now());
   useEffect(() => {
-    const t = setInterval(() => setTime(Date.now()), 60000);
+    const t = setInterval(() => setTime(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
   const diff = Math.max(
@@ -62,22 +62,24 @@ function Countdown({ event }: { event: EventData }) {
     ),
     days = Math.floor(diff / 86400000),
     hours = Math.floor(diff / 3600000) % 24,
-    mins = Math.floor(diff / 60000) % 60;
+    mins = Math.floor(diff / 60000) % 60,
+    secs = Math.floor(diff / 1000) % 60;
   return (
-    <div className="countdown">
+    <div className="countdown" role="timer" aria-label="До начала мероприятия">
       <span className="micro muted">ДО НАЧАЛА НОЧИ</span>
       <div>
         {[
           [days, "ДНЕЙ"],
           [hours, "ЧАСОВ"],
           [mins, "МИНУТ"],
+          [secs, "СЕКУНД"],
         ].map(([n, label], i) => (
           <React.Fragment key={label}>
             <span className="count-unit">
               <b>{String(n).padStart(2, "0")}</b>
               <small>{label}</small>
             </span>
-            {i < 2 && <span className="count-colon">:</span>}
+            {i < 3 && <span className="count-colon">:</span>}
           </React.Fragment>
         ))}
       </div>
@@ -85,48 +87,122 @@ function Countdown({ event }: { event: EventData }) {
   );
 }
 function Home() {
-  const [events, setEvents] = useState<EventData[]>([]),
-    [config, setConfig] = useState<Config>(),
-    [error, setError] = useState(""),
-    [buy, setBuy] = useState(false),
-    [paused, setPaused] = useState(
-      () => matchMedia("(prefers-reduced-motion: reduce)").matches,
-    );
-  const [privacy, setPrivacy] = useState(false);
+  const [events, setEvents] = useState<EventData[]>([]);
+  const [config, setConfig] = useState<Config>();
+  const [error, setError] = useState("");
+  const [minimumElapsed, setMinimumElapsed] = useState(false);
+  const [artworkReady, setArtworkReady] = useState(false);
+  const [showIntro, setShowIntro] = useState(true);
+  const [revealing, setRevealing] = useState(false);
   const selected = new URLSearchParams(location.search).get("event");
+  const event = events.find((e) => e.id === selected) || events[0];
+
   useEffect(() => {
-    Promise.all([api<EventData[]>("/events"), api<Config>("/config")])
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const timer = setTimeout(() => setMinimumElapsed(true), reduced ? 0 : 2200);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    const timeout = setTimeout(() => {
+      controller.abort();
+      setError(
+        "Не удалось загрузить афишу. Проверьте соединение и попробуйте ещё раз.",
+      );
+    }, 15000);
+    Promise.all([
+      api<EventData[]>("/events", { signal: controller.signal }),
+      api<Config>("/config", { signal: controller.signal }),
+    ])
       .then(([e, c]) => {
+        if (!active) return;
         setEvents(e);
         setConfig(c);
       })
-      .catch((e) => setError(e.message));
+      .catch((e: Error) => {
+        if (active && !controller.signal.aborted) setError(e.message);
+      })
+      .finally(() => clearTimeout(timeout));
+    return () => {
+      active = false;
+      clearTimeout(timeout);
+      controller.abort();
+    };
   }, []);
-  const event = events.find((e) => e.id === selected) || events[0];
-  if (error)
-    return (
-      <div className="loading-screen">
-        <Brand />
-        <ErrorNotice text={error} />
-        <button className="button primary" onClick={() => location.reload()}>
-          Попробовать ещё раз
-        </button>
-      </div>
-    );
-  if (!event || !config)
-    return (
-      <div className="loading-screen">
-        <Brand />
-        {config ? <p>Афиша скоро появится.</p> : <Spinner />}
-        <a href="/admin">Управление событиями</a>
-      </div>
-    );
+
+  useEffect(() => {
+    if (!event) return;
+    // An unavailable poster must never trap the guest behind the intro.
+    const timeout = setTimeout(() => setArtworkReady(true), 4000);
+    return () => clearTimeout(timeout);
+  }, [event]);
+
+  useEffect(() => {
+    if (!event || !config || !minimumElapsed || !artworkReady) return;
+    setRevealing(true);
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const timeout = setTimeout(() => setShowIntro(false), reduced ? 0 : 550);
+    return () => clearTimeout(timeout);
+  }, [event, config, minimumElapsed, artworkReady]);
+
+  const introActive = showIntro && !error && (!config || Boolean(event));
+  return (
+    <>
+      {introActive && <MoonLoader revealing={revealing} />}
+      {error ? (
+        <div className="loading-screen">
+          <Brand />
+          <ErrorNotice text={error} />
+          <button className="button primary" onClick={() => location.reload()}>
+            Попробовать ещё раз
+          </button>
+        </div>
+      ) : event && config ? (
+        <EventLanding
+          event={event}
+          config={config}
+          introActive={introActive}
+          onArtworkReady={() => setArtworkReady(true)}
+        />
+      ) : config ? (
+        <div className="loading-screen">
+          <Brand />
+          <p>Афиша скоро появится.</p>
+          <a href="/admin">Управление событиями</a>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function EventLanding({
+  event,
+  config,
+  introActive,
+  onArtworkReady,
+}: {
+  event: EventData;
+  config: Config;
+  introActive: boolean;
+  onArtworkReady: () => void;
+}) {
+  const [buy, setBuy] = useState(false);
+  const [paused, setPaused] = useState(
+    () => matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
+  const [privacy, setPrivacy] = useState(false);
   const canBuy =
     Boolean(event.sales_open) &&
     event.available > 0 &&
     new Date(`${event.date}T${event.time}:00+03:00`) > new Date();
   return (
-    <div className={"public-app " + (paused ? "motion-paused" : "")}>
+    <div
+      className={"public-app " + (paused ? "motion-paused" : "")}
+      inert={introActive}
+      aria-hidden={introActive || undefined}
+    >
       {(config.demo || config.paymentMode === "sandbox") && (
         <div className="preview-banner">
           <span /> ПРЕДПРОСМОТР <i />{" "}
@@ -137,11 +213,6 @@ function Home() {
       )}
       <header className="public-header">
         <Brand />
-        <nav aria-label="Навигация">
-          <a href="#about">О событии</a>
-          <a href="#details">Детали вечера</a>
-          <a href="#questions">Вопросы</a>
-        </nav>
         <a href="/admin" className="header-link">
           Организаторам <ArrowUpRight size={15} />
         </a>
@@ -155,9 +226,15 @@ function Home() {
         >
           <div className="hero-art" aria-hidden="true">
             <div className="hero-scene">
-              <img src={event.hero_image} alt="" fetchPriority="high" />
+              <img
+                src={event.hero_image}
+                alt=""
+                fetchPriority="high"
+                onLoad={onArtworkReady}
+                onError={onArtworkReady}
+              />
               {event.hero_image === "/assets/red-moon.png" && (
-                <MoonScene paused={paused} />
+                <MoonScene paused={paused || introActive} />
               )}
             </div>
             <div className="mist mist-one" />
@@ -235,23 +312,10 @@ function Home() {
               СМС и на почту
             </div>
           </div>
-          <div className="moon-caption">
-            <span>{new Date(event.date + "T12:00:00").getDate()}</span>
-            <span>
-              {new Date(event.date + "T12:00:00")
-                .toLocaleString("en-US", { month: "long" })
-                .toUpperCase()}
-              <br />
-              RED MOON RISING
-            </span>
+          <div className="hero-countdown">
+            <Countdown event={event} />
           </div>
           <div className="hero-bottom">
-            <a href="#about" className="scroll-cue">
-              <span>
-                <ArrowDown size={17} />
-              </span>
-              Эта ночь будет особенной
-            </a>
             <button
               className="motion-toggle"
               onClick={() => setPaused(!paused)}
@@ -272,116 +336,6 @@ function Home() {
             ))}
           </div>
         </div>
-        <section className="about section-shell" id="about">
-          <div>
-            <span className="eyebrow quiet">01 / ПО ТУ СТОРОНУ ОБЫЧНОГО</span>
-            <h2>
-              Оставьте привычное
-              <br />
-              до <em>рассвета.</em>
-            </h2>
-          </div>
-          <div className="about-right">
-            <p>{event.description}</p>
-            <a className="text-link" href="#details">
-              Всё, что нужно знать <ArrowDown size={16} />
-            </a>
-          </div>
-        </section>
-        <section className="details section-shell" id="details">
-          <div className="detail-item">
-            <span className="detail-index">01</span>
-            <CalendarDays />
-            <span className="micro muted">КОГДА</span>
-            <h3>{dateLabel(event.date)}</h3>
-            <p>
-              Начало в {event.time} · {event.date.slice(0, 4)}
-            </p>
-          </div>
-          <div className="detail-item">
-            <span className="detail-index">02</span>
-            <MapPin />
-            <span className="micro muted">ГДЕ</span>
-            <h3>{event.venue}</h3>
-            <p>{event.address}</p>
-          </div>
-          <div className="detail-item">
-            <span className="detail-index">03</span>
-            <Sparkles />
-            <span className="micro muted">ДРЕСС-КОД</span>
-            <h3>Будьте загадкой</h3>
-            <p>{event.dresscode}</p>
-          </div>
-        </section>
-        <section className="reservation section-shell">
-          <div>
-            <span className="eyebrow quiet">
-              ВАШЕ ПРИГЛАШЕНИЕ В ДРУГУЮ РЕАЛЬНОСТЬ
-            </span>
-            <h2>
-              У ночи есть <em>ваше имя.</em>
-            </h2>
-            <button
-              className="button primary"
-              disabled={!canBuy}
-              onClick={() => setBuy(true)}
-            >
-              Купить билет · {money(event.price)}
-              <ArrowUpRight size={19} />
-            </button>
-          </div>
-          <Countdown event={event} />
-        </section>
-        <section className="questions section-shell" id="questions">
-          <h2>
-            Перед <em>полуночью.</em>
-            <small>Ответы на ваши вопросы</small>
-          </h2>
-          <div>
-            {[
-              [
-                "Как я получу билет?",
-                "После подтверждения оплаты билеты появятся на экране. При подключённых сервисах доставки ссылка придёт на почту и в СМС. На каждый купленный билет выпускается отдельный QR-код.",
-              ],
-              [
-                "Как проходит оплата?",
-                "На сайте доступна оплата через СБП: откройте банковское приложение по ссылке или отсканируйте платёжный QR. Статус проверяется автоматически.",
-              ],
-              [
-                "Можно купить билеты на компанию?",
-                "Да, укажите количество билетов в форме. Достаточно контактов одного покупателя. Каждый гость проходит по своему QR-коду.",
-              ],
-              [
-                "Что показать на входе?",
-                "Откройте билет с QR-кодом на телефоне. Сотрудник проверит его камерой. Каждый билет позволяет пройти один раз.",
-              ],
-            ].map(([q, a]) => (
-              <details key={q}>
-                <summary>
-                  {q}
-                  <Plus size={18} />
-                </summary>
-                <p>{a}</p>
-              </details>
-            ))}
-          </div>
-        </section>
-        {events.length > 1 && (
-          <section className="section-shell more-events">
-            <h2>Ещё события</h2>
-            {events
-              .filter((e) => e.id !== event.id)
-              .map((e) => (
-                <a href={"/?event=" + e.id} key={e.id}>
-                  {e.title}
-                  <span>
-                    {dateLabel(e.date)} · {money(e.price)}
-                  </span>
-                  <ArrowUpRight />
-                </a>
-              ))}
-          </section>
-        )}
       </main>
       <footer className="public-footer">
         <Brand />
@@ -389,9 +343,6 @@ function Home() {
         <button className="plain" onClick={() => setPrivacy(true)}>
           Конфиденциальность
         </button>
-        <a href="/checkin">
-          Вход для контролёра <ArrowUpRight size={13} />
-        </a>
         <small>© Чайка, 2026</small>
       </footer>
       {buy && (

@@ -1,20 +1,15 @@
 import React, { useEffect, useRef } from "react";
 import { X, LoaderCircle } from "lucide-react";
-export function Brand({ dark = false }: { dark?: boolean }) {
+export function Brand() {
   return (
-    <a
-      className={"brand " + (dark ? "dark-brand" : "")}
-      href="/"
-      aria-label="Чайка события — главная"
-    >
-      <svg viewBox="0 0 42 27" aria-hidden="true">
-        <path
-          d="M2 13C10 1 17 7 21 17 25 7 32 1 40 13 31 9 24 19 21 25 18 19 11 9 2 13Z"
-          fill="currentColor"
+    <a className="brand" href="/" aria-label="ChaikaTeam — главная">
+      <span className="brand-mark">
+        <img
+          src="/assets/chaikateam.png"
+          alt="ChaikaTeam"
+          width="3334"
+          height="1093"
         />
-      </svg>
-      <span>
-        чайка<span className="brand-sub">СОБЫТИЯ</span>
       </span>
     </a>
   );
@@ -65,7 +60,7 @@ export function Modal({
     >
       <div className="modal-inner">
         <div className="modal-heading">
-          <span className="micro">ЧАЙКА / СОБЫТИЯ</span>
+          <span className="micro">CHAIKATEAM</span>
           <button className="icon-button" aria-label="Закрыть" onClick={close}>
             <X size={22} />
           </button>

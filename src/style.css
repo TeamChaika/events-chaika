@@ -189,30 +189,6 @@ html {
 .text-link:hover {
   color: var(--red);
 }
-.brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  width: max-content;
-  line-height: 0.95;
-}
-.brand svg {
-  width: 37px;
-  height: 28px;
-}
-.brand > span {
-  font-size: 27px;
-  letter-spacing: -1.3px;
-  font-weight: 750;
-}
-.brand-sub {
-  display: block;
-  font-size: 7px;
-  letter-spacing: 4.6px;
-  font-weight: 550;
-  margin-top: 8px;
-  padding-left: 2px;
-}
 .preview-banner {
   height: 27px;
   background: #27100f;
@@ -245,15 +221,6 @@ html {
   justify-content: space-between;
   position: relative;
   z-index: 3;
-}
-.public-header nav {
-  display: flex;
-  gap: 36px;
-  font-size: 11px;
-  color: #b7b4b2;
-}
-.public-header nav a:hover {
-  color: #fff;
 }
 .header-link {
   font-size: 10px;
@@ -454,28 +421,6 @@ html {
   letter-spacing: 3px;
   color: #615758;
 }
-.moon-caption {
-  position: absolute;
-  right: 6%;
-  bottom: 106px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  z-index: 1;
-}
-.moon-caption > span:first-child {
-  font-family: "Oswald Variable", sans-serif;
-  font-size: 82px;
-  line-height: 1;
-  font-weight: 350;
-  letter-spacing: -4px;
-}
-.moon-caption > span:last-child {
-  font-size: 8px;
-  line-height: 1.8;
-  letter-spacing: 2px;
-  color: #ccc3bf;
-}
 .hero-bottom {
   position: absolute;
   bottom: 27px;
@@ -484,22 +429,6 @@ html {
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-.scroll-cue {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: #a19b97;
-  font-size: 9px;
-}
-.scroll-cue > span {
-  width: 30px;
-  height: 30px;
-  border: 1px solid #ffffff25;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 .motion-toggle {
   display: flex;
@@ -605,190 +534,9 @@ html {
   color: #d34c3d;
   stroke-width: 1.4;
 }
-.section-shell {
-  max-width: 1270px;
-  width: 88%;
-  margin: auto;
-}
-.about {
-  padding: 90px 0 66px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12%;
-}
 h2 em {
   font-family: Georgia, serif;
   font-weight: 400;
-}
-.about h2,
-.reservation h2 {
-  font-size: 37px;
-  line-height: 1.3;
-  letter-spacing: -1.4px;
-  font-weight: 450;
-  margin-top: 20px;
-}
-.about h2 em {
-  color: #ef685d;
-}
-.about-right {
-  padding-top: 29px;
-}
-.about-right p {
-  font-size: 13px;
-  color: #aaa5a1;
-  line-height: 2;
-  max-width: 480px;
-}
-.about-right a {
-  margin-top: 22px;
-}
-.details {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-}
-.detail-item {
-  padding: 30px 34px;
-  position: relative;
-  border-right: 1px solid var(--line);
-  display: flex;
-  align-items: flex-start;
-  flex-direction: column;
-}
-.detail-item:last-child {
-  border: 0;
-}
-.detail-item > svg {
-  margin-bottom: 22px;
-  width: 22px;
-  height: 22px;
-  stroke-width: 1.2;
-  color: #d7c4bb;
-}
-.detail-index {
-  position: absolute;
-  top: 26px;
-  right: 25px;
-  font-family: Georgia, serif;
-  font-size: 28px;
-  color: #ffffff15;
-}
-.detail-item .micro {
-  font-size: 8px;
-}
-.detail-item h3 {
-  font-size: 19px;
-  letter-spacing: -0.6px;
-  font-weight: 500;
-  margin-top: 12px;
-}
-.detail-item p {
-  font-size: 10px;
-  color: #96908d;
-  margin-top: 8px;
-}
-.reservation {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 76px 0 80px;
-  border-bottom: 1px solid var(--line);
-}
-.reservation h2 {
-  font-size: 31px;
-  margin-bottom: 24px;
-}
-.reservation .button {
-  min-height: 45px;
-}
-.countdown {
-  padding-right: 3%;
-}
-.countdown > .micro {
-  font-size: 8px;
-  display: block;
-  margin-bottom: 19px;
-}
-.countdown > div {
-  display: flex;
-  gap: 16px;
-}
-.count-unit {
-  display: flex;
-  align-items: center;
-  flex-direction: column;
-}
-.count-unit b {
-  font-family: "Oswald Variable", sans-serif;
-  font-size: 44px;
-  font-weight: 350;
-  line-height: 1.1;
-  letter-spacing: -1px;
-}
-.count-unit small {
-  font-size: 6px;
-  letter-spacing: 1.5px;
-  margin-top: 12px;
-  color: #8c817c;
-}
-.count-colon {
-  font-size: 28px;
-  font-weight: 200;
-  color: #75564d;
-  margin-top: 4px;
-}
-.questions {
-  padding: 78px 0 90px;
-  display: grid;
-  grid-template-columns: 1fr 1.3fr;
-  gap: 60px;
-}
-.questions h2 {
-  font-size: 29px;
-  letter-spacing: -1px;
-  font-weight: 450;
-}
-.questions h2 small {
-  display: block;
-  font-size: 11px;
-  color: #938f8d;
-  font-family: "Manrope Variable", sans-serif;
-  font-weight: 400;
-  letter-spacing: 0;
-  margin-top: 13px;
-}
-.questions details {
-  border-bottom: 1px solid var(--line);
-  padding: 0 0 18px;
-  margin-bottom: 20px;
-}
-.questions summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 25px;
-  list-style: none;
-  cursor: pointer;
-  font-size: 12px;
-}
-.questions summary::-webkit-details-marker {
-  display: none;
-}
-.questions summary svg {
-  color: #968d88;
-  width: 14px;
-}
-.questions details[open] summary svg {
-  transform: rotate(45deg);
-}
-.questions details p {
-  font-size: 11px;
-  color: #a59e98;
-  line-height: 1.9;
-  padding-top: 17px;
-  padding-right: 30px;
 }
 .public-footer {
   border-top: 1px solid var(--line);
@@ -804,16 +552,6 @@ h2 em {
 .public-footer .brand {
   color: #ddd7d1;
 }
-.public-footer .brand > span {
-  font-size: 20px;
-}
-.public-footer .brand-sub {
-  font-size: 5px;
-  letter-spacing: 3.8px;
-}
-.public-footer .brand svg {
-  width: 29px;
-}
 .public-footer > span {
   flex: 1;
   font-size: 9px;
@@ -821,29 +559,9 @@ h2 em {
 .public-footer > button {
   font-size: 9px;
 }
-.public-footer > a:not(.brand) {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
 .public-footer > small {
   font-size: 9px;
   white-space: nowrap;
-}
-.more-events {
-  padding: 30px 0 60px;
-}
-.more-events > a {
-  padding: 22px 0;
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  border-bottom: 1px solid var(--line);
-}
-.more-events > a span {
-  margin-left: auto;
-  color: var(--muted);
-  font-size: 12px;
 }
 
 .loading-screen {
@@ -1158,17 +876,6 @@ form label > small {
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-.ticket-top .brand svg {
-  width: 24px;
-}
-.ticket-top .brand > span {
-  font-size: 18px;
-}
-.ticket-top .brand-sub {
-  font-size: 4px;
-  letter-spacing: 3.3px;
-  margin-top: 5px;
 }
 .ticket-top > span {
   font-size: 6px;
@@ -2328,9 +2035,6 @@ td .diagnostic {
   .manual-scan .button span {
     display: none;
   }
-  .questions {
-    gap: 35px;
-  }
   .public-footer {
     gap: 20px;
   }
@@ -2342,10 +2046,6 @@ td .diagnostic {
   .public-header {
     height: 84px;
     padding-inline: 6%;
-  }
-  .public-header nav {
-    gap: 20px;
-    font-size: 10px;
   }
   .header-link {
     display: none;
@@ -2386,16 +2086,6 @@ td .diagnostic {
   .event-meta svg {
     width: 13px;
   }
-  .moon-caption {
-    bottom: 103px;
-    right: 7%;
-  }
-  .moon-caption > span:first-child {
-    font-size: 52px;
-  }
-  .moon-caption > span:last-child {
-    display: none;
-  }
   .bat-2 {
     right: 43%;
     top: 8%;
@@ -2407,42 +2097,6 @@ td .diagnostic {
   .bat-1 {
     width: 90px;
     right: 3%;
-  }
-  .about {
-    gap: 8%;
-    padding-top: 60px;
-  }
-  .about h2 {
-    font-size: 28px;
-  }
-  .about-right p {
-    font-size: 11px;
-  }
-  .detail-item {
-    padding: 23px;
-  }
-  .detail-item h3 {
-    font-size: 17px;
-  }
-  .detail-item p {
-    font-size: 9px;
-  }
-  .reservation h2 {
-    font-size: 25px;
-  }
-  .reservation .eyebrow {
-    font-size: 7px;
-  }
-  .countdown {
-    padding-right: 0;
-  }
-  .questions {
-    grid-template-columns: 1fr;
-    gap: 35px;
-    padding-top: 55px;
-  }
-  .questions h2 small {
-    font-size: 10px;
   }
   .public-footer {
     flex-wrap: wrap;
@@ -2553,24 +2207,6 @@ td .diagnostic {
   }
   .public-header {
     height: 75px;
-  }
-  .brand > span {
-    font-size: 23px;
-  }
-  .brand svg {
-    width: 32px;
-  }
-  .brand-sub {
-    font-size: 6px;
-    letter-spacing: 4px;
-    margin-top: 6px;
-  }
-  .public-header nav {
-    gap: 19px;
-    font-size: 9px;
-  }
-  .public-header nav a:nth-child(2) {
-    display: none;
   }
   .hero {
     height: 790px;
@@ -2698,34 +2334,10 @@ td .diagnostic {
   .hero-side-label {
     display: none;
   }
-  .moon-caption {
-    top: 100px;
-    left: 6%;
-    right: auto;
-    bottom: auto;
-    opacity: 0.8;
-  }
-  .moon-caption > span:first-child {
-    font-size: 38px;
-    letter-spacing: -1px;
-  }
-  .moon-caption > span:last-child {
-    display: block;
-    font-size: 6px;
-    letter-spacing: 1px;
-  }
   .hero-bottom {
     bottom: 19px;
     left: 6%;
     right: 6%;
-  }
-  .scroll-cue {
-    font-size: 8px;
-    gap: 9px;
-  }
-  .scroll-cue > span {
-    width: 26px;
-    height: 26px;
   }
   .motion-toggle {
     font-size: 7px;
@@ -2772,121 +2384,9 @@ td .diagnostic {
     gap: 20px;
     padding-right: 20px;
   }
-  .about {
-    grid-template-columns: 1fr;
-    padding: 49px 0 32px;
-    gap: 20px;
-  }
   .eyebrow.quiet {
     font-size: 7px;
     letter-spacing: 1.2px;
-  }
-  .about h2 {
-    font-size: 32px;
-    margin-top: 16px;
-  }
-  .about-right {
-    padding-top: 0;
-  }
-  .about-right p {
-    font-size: 11px;
-    line-height: 1.95;
-    max-width: 100%;
-  }
-  .about-right a {
-    font-size: 10px;
-    margin-top: 18px;
-  }
-  .details {
-    display: flex;
-    flex-direction: column;
-  }
-  .detail-item {
-    padding: 24px 22px;
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-    min-height: 116px;
-    padding-left: 67px;
-  }
-  .detail-item > svg {
-    position: absolute;
-    left: 24px;
-    top: 29px;
-    width: 22px;
-  }
-  .detail-item h3 {
-    font-size: 18px;
-    margin-top: 10px;
-  }
-  .detail-item p {
-    font-size: 10px;
-  }
-  .detail-item .micro {
-    font-size: 7px;
-  }
-  .detail-index {
-    right: 19px;
-    top: 20px;
-    font-size: 22px;
-  }
-  .reservation {
-    padding: 45px 0;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 35px;
-  }
-  .reservation h2 {
-    font-size: 28px;
-    line-height: 1.35;
-    max-width: 250px;
-    margin-top: 16px;
-  }
-  .reservation .button {
-    font-size: 11px;
-  }
-  .countdown {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 22px 0 0;
-    border-top: 1px solid var(--line);
-  }
-  .countdown > .micro {
-    font-size: 7px;
-    letter-spacing: 1px;
-    margin: 0;
-  }
-  .countdown > div {
-    gap: 10px;
-  }
-  .count-unit b {
-    font-size: 31px;
-  }
-  .count-colon {
-    font-size: 22px;
-    margin-top: 0;
-  }
-  .count-unit small {
-    font-size: 5px;
-    letter-spacing: 1px;
-    margin-top: 8px;
-  }
-  .questions {
-    padding: 46px 0 42px;
-    gap: 28px;
-  }
-  .questions h2 {
-    font-size: 29px;
-  }
-  .questions summary {
-    font-size: 11px;
-    gap: 15px;
-    min-height: 23px;
-  }
-  .questions details p {
-    font-size: 10px;
-    padding-right: 10px;
   }
   .public-footer {
     padding: 26px 6%;
@@ -2897,27 +2397,12 @@ td .diagnostic {
     margin-bottom: 0;
   }
   .public-footer > button,
-  .public-footer > a:not(.brand),
   .public-footer > small {
     font-size: 8px;
-  }
-  .public-footer > a:not(.brand) {
-    margin-left: auto;
   }
   .public-footer > small {
     width: 100%;
     font-size: 8px;
-  }
-  .more-events h2 {
-    font-size: 24px;
-  }
-  .more-events a {
-    font-size: 12px;
-    flex-wrap: wrap;
-    gap: 10px;
-  }
-  .more-events a span {
-    font-size: 9px;
   }
   .modal-inner {
     padding: 21px 23px 25px;
@@ -3025,16 +2510,6 @@ td .diagnostic {
   }
   .admin-sidebar > .brand {
     margin: 0;
-  }
-  .admin-sidebar .brand > span {
-    font-size: 19px;
-  }
-  .admin-sidebar .brand svg {
-    width: 27px;
-  }
-  .admin-sidebar .brand-sub {
-    font-size: 5px;
-    letter-spacing: 3.3px;
   }
   .workspace-label {
     display: none;
@@ -3308,9 +2783,6 @@ td .diagnostic {
   .payment-note {
     font-size: 7px;
   }
-  .public-header nav {
-    font-size: 8px;
-  }
   .stat > strong {
     font-size: 20px;
   }
@@ -3526,17 +2998,159 @@ td .diagnostic {
     inset: -10px -20px -20px -20px;
     --scene-position: 60% 10%;
   }
-  .moon-caption {
-    bottom: 85px;
-  }
-  .moon-caption > span:first-child {
-    font-size: 66px;
-  }
   .hero-custom {
     height: auto;
     min-height: 560px;
   }
   .hero-custom h1 {
     font-size: clamp(48px, 6vw, 85px);
+  }
+}
+
+/* Display the supplied logo without its white outer margins. */
+.brand {
+  display: inline-flex;
+  width: 190px;
+  max-width: 100%;
+  flex-shrink: 0;
+}
+.brand-mark {
+  display: block;
+  width: 100%;
+  aspect-ratio: 2880 / 509;
+  overflow: hidden;
+  position: relative;
+  mix-blend-mode: screen;
+}
+.brand-mark img {
+  display: block;
+  position: absolute;
+  width: 115.765%;
+  height: auto;
+  max-width: none;
+  left: -7.847%;
+  top: -57.17%;
+}
+.public-footer .brand {
+  width: 155px;
+}
+.public-footer > button {
+  margin-left: auto;
+}
+.admin-sidebar .brand {
+  width: 145px;
+}
+.hero-bottom {
+  justify-content: flex-end;
+}
+.hero-countdown {
+  position: absolute;
+  right: 6%;
+  bottom: 91px;
+  z-index: 2;
+  padding: 18px 22px;
+  border-left: 1px solid #d3664d8c;
+  background: linear-gradient(90deg, #130b0cc9, #10080a6b);
+  border-radius: 0 3px 3px 0;
+}
+.countdown > .micro {
+  display: block;
+  color: #d2a89a;
+  font-size: 8px;
+  letter-spacing: 2.2px;
+  margin-bottom: 14px;
+}
+.countdown > div {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+}
+.count-unit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 35px;
+}
+.count-unit b {
+  font:
+    350 39px/1 "Oswald Variable",
+    sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.8px;
+}
+.count-unit small {
+  margin-top: 8px;
+  font-size: 7px;
+  letter-spacing: 0.8px;
+  color: #c0a49a;
+}
+.count-colon {
+  font-size: 24px;
+  line-height: 1.4;
+  color: #b36b5d;
+}
+@media (max-width: 800px) {
+  .hero-countdown {
+    right: 6%;
+    bottom: 86px;
+    padding: 15px;
+  }
+  .count-unit b {
+    font-size: 30px;
+  }
+  .count-unit {
+    min-width: 28px;
+  }
+  .countdown > div {
+    gap: 8px;
+  }
+}
+@media (max-width: 560px) {
+  .public-header .brand {
+    width: 176px;
+  }
+  .hero-countdown {
+    top: 86px;
+    left: 6%;
+    bottom: auto;
+    right: auto;
+    padding: 12px 15px;
+    background: linear-gradient(90deg, #15090caf, #180b0b42);
+  }
+  .countdown > .micro {
+    font-size: 7px;
+    letter-spacing: 1.4px;
+    margin-bottom: 12px;
+  }
+  .countdown > div {
+    gap: 7px;
+  }
+  .count-unit {
+    min-width: 24px;
+  }
+  .count-unit b {
+    font-size: 28px;
+  }
+  .count-unit small {
+    font-size: 7px;
+    letter-spacing: 0.6px;
+  }
+  .count-colon {
+    font-size: 20px;
+  }
+  .public-footer {
+    gap: 24px;
+  }
+  .public-footer .brand {
+    width: 152px;
+  }
+  .public-footer > small {
+    width: 100%;
+  }
+}
+@media print {
+  .brand-mark {
+    filter: invert(1);
+    mix-blend-mode: multiply;
   }
 }
