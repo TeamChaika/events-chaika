@@ -3154,3 +3154,59 @@ td .diagnostic {
     mix-blend-mode: multiply;
   }
 }
+
+.event-partners {
+  display: inline-flex;
+  align-items: center;
+  gap: 18px;
+  flex-shrink: 0;
+  max-width: 100%;
+}
+.event-partners .brand {
+  width: 170px;
+}
+.partner-cross {
+  color: #9b7770;
+  font-size: 15px;
+  font-weight: 300;
+  line-height: 1;
+}
+.partner-logo {
+  display: block;
+  width: 122px;
+  height: auto;
+  flex-shrink: 0;
+}
+.public-footer .event-partners .brand {
+  width: 145px;
+}
+.public-footer .partner-logo {
+  width: 108px;
+}
+@media (max-width: 560px) {
+  .event-partners {
+    gap: 14px;
+  }
+  .public-header .event-partners .brand,
+  .loader-brand .event-partners .brand,
+  .public-footer .event-partners .brand {
+    width: 145px;
+  }
+  .partner-logo,
+  .public-footer .partner-logo {
+    width: 105px;
+  }
+  .partner-cross {
+    font-size: 13px;
+  }
+  .public-footer .event-partners {
+    flex-basis: 100%;
+  }
+  .public-footer > button {
+    margin-left: 0;
+  }
+  .public-footer > small {
+    width: auto;
+    margin-left: auto;
+  }
+}

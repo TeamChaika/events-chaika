@@ -14,6 +14,27 @@ export function Brand() {
     </a>
   );
 }
+export function EventPartners() {
+  return (
+    <div
+      className="event-partners"
+      role="group"
+      aria-label="ChaikaTeam и Мрия — совместное событие"
+    >
+      <Brand />
+      <span className="partner-cross" aria-hidden="true">
+        ×
+      </span>
+      <img
+        className="partner-logo"
+        src="/assets/partner-mriya.svg"
+        alt="Мрия"
+        width="170"
+        height="40"
+      />
+    </div>
+  );
+}
 export function ErrorNotice({ text }: { text: string }) {
   return text ? (
     <div role="alert" className="error-notice">

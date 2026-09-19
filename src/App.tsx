@@ -31,7 +31,14 @@ import {
   type OrderData,
   type TicketData,
 } from "./types";
-import { Brand, ErrorNotice, Spinner, Modal, GuestFields } from "./ui";
+import {
+  Brand,
+  EventPartners,
+  ErrorNotice,
+  Spinner,
+  Modal,
+  GuestFields,
+} from "./ui";
 import { MoonScene } from "./MoonScene";
 import { MoonLoader } from "./MoonLoader";
 
@@ -212,7 +219,7 @@ function EventLanding({
         </div>
       )}
       <header className="public-header">
-        <Brand />
+        <EventPartners />
         <a href="/admin" className="header-link">
           Организаторам <ArrowUpRight size={15} />
         </a>
@@ -338,7 +345,7 @@ function EventLanding({
         </div>
       </main>
       <footer className="public-footer">
-        <Brand />
+        <EventPartners />
         <span>Создаём поводы быть вместе.</span>
         <button className="plain" onClick={() => setPrivacy(true)}>
           Конфиденциальность
