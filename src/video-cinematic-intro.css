@@ -1,0 +1,64 @@
+.cinema-video-backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 35%, #791a2944, transparent 65%), #080507;
+}
+.cinema-video-stage {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  height: 100%;
+  aspect-ratio: 9 / 16;
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity 400ms ease;
+}
+.cinema-video-intro.is-ready .cinema-video-stage {
+  opacity: 1;
+}
+.cinema-video-stage video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  mask-image: linear-gradient(
+    90deg,
+    transparent,
+    #000 3%,
+    #000 97%,
+    transparent
+  );
+}
+.cinema-video-qr {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  transition: opacity 350ms ease;
+}
+.cinema-video-intro .cinema-vignette {
+  background: linear-gradient(0deg, #080507, transparent 18%);
+}
+.cinema-video-intro .cinema-caption {
+  animation: none;
+  text-shadow: 0 2px 14px #000;
+}
+.cinema-video-intro .cinema-progress i {
+  animation: none;
+  transform: scaleX(var(--video-progress, 0));
+  transition: transform 250ms linear;
+}
+@media (max-height: 760px) {
+  .cinema-video-stage {
+    height: calc(100% - 60px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cinema-video-stage,
+  .cinema-video-qr,
+  .cinema-video-intro .cinema-progress i {
+    transition: none;
+  }
+}

@@ -6,6 +6,7 @@ import {
   type CSSProperties,
 } from "react";
 import { ArrowUpRight } from "lucide-react";
+import { VideoCinematicIntro } from "./VideoCinematicIntro";
 import "./cinematic-intro.css";
 import {
   useIntroPlayback,
@@ -13,21 +14,42 @@ import {
   TICKET_INTRO_DURATION,
 } from "./useIntroPlayback";
 
-// A browser-rendered alternative to video. The heroine remains the original
-// still artwork; the invitation and atmosphere move independently around her.
-export function CinematicIntro({
-  qrImage,
-  age,
-  demo,
-  ticketUrl,
-  onComplete,
-}: {
+interface CinematicIntroProps {
   qrImage: string;
   age: number;
   demo: boolean;
   ticketUrl: string;
   onComplete: () => void;
-}) {
+}
+
+export function CinematicIntro(props: CinematicIntroProps) {
+  const [useVideo, setUseVideo] = useState(
+    () => !matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
+  useEffect(() => {
+    const preference = matchMedia("(prefers-reduced-motion: reduce)");
+    const onChange = () => {
+      if (preference.matches) setUseVideo(false);
+    };
+    preference.addEventListener("change", onChange);
+    return () => preference.removeEventListener("change", onChange);
+  }, []);
+
+  return useVideo ? (
+    <VideoCinematicIntro {...props} onFallback={() => setUseVideo(false)} />
+  ) : (
+    <StillCinematicIntro {...props} />
+  );
+}
+
+// Keep the existing scene for reduced motion and browsers that block video.
+function StillCinematicIntro({
+  qrImage,
+  age,
+  demo,
+  ticketUrl,
+  onComplete,
+}: CinematicIntroProps) {
   const [revealing, setRevealing] = useState(false);
   const images = useMemo(
     () => ["/assets/red-moon.png", ...MOON_INTRO_IMAGES, qrImage],
