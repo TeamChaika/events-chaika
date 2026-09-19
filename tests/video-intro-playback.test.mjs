@@ -19,7 +19,7 @@ const { startVideoIntro } = await import(
   `data:text/javascript;base64,${Buffer.from(outputText).toString("base64")}`
 );
 
-function setup(play = () => Promise.resolve()) {
+function setup(play = () => Promise.resolve(), autoPlay = true) {
   let now = 0;
   let sequence = 0;
   const timers = new Map(),
@@ -45,19 +45,22 @@ function setup(play = () => Promise.resolve()) {
       return () => listeners.delete(callback);
     },
   };
-  const cancel = startVideoIntro(
+  const controller = startVideoIntro(
     video,
     {
       onStarted: () => calls.push("started"),
       onComplete: () => calls.push("complete"),
-      onFallback: () => calls.push("fallback"),
+      onPlayRequired: () => calls.push("play-required"),
+      onUnavailable: () => calls.push("unavailable"),
     },
     clock,
+    { autoPlay },
   );
   return {
     video,
     calls,
-    cancel,
+    cancel: () => controller.stop(),
+    play: () => controller.play(),
     pending: () => timers.size + listeners.size,
     event: (name) => video.dispatchEvent(new Event(name)),
     resumeAfter(ms) {
@@ -94,18 +97,98 @@ test("slow download does not consume the movie; ended opens the ticket once", ()
   assert.equal(player.pending(), 0);
 });
 
-test("blocked mobile autoplay falls back without trapping the guest", async () => {
-  const player = setup(() => Promise.reject(new Error("NotAllowedError")));
+test("blocked autoplay waits for a tap, then plays the same video", async () => {
+  const player = setup(() =>
+    Promise.reject(new DOMException("Blocked", "NotAllowedError")),
+  );
   await new Promise(setImmediate);
-  assert.deepEqual(player.calls, ["fallback"]);
+  assert.deepEqual(player.calls, ["play-required"]);
+  player.advance(60000);
+  player.resumeAfter(1000);
+  assert.deepEqual(player.calls, ["play-required"]);
+  let played = 0;
+  player.video.play = () => {
+    played++;
+    return Promise.resolve();
+  };
+  player.play();
+  assert.equal(
+    played,
+    1,
+    "play() must run synchronously inside the tap handler",
+  );
+  assert.equal(player.video.muted, true);
+  assert.equal(player.video.defaultMuted, true);
+  assert.equal(player.video.playsInline, true);
+  player.event("playing");
+  player.advance(8000);
+  player.event("ended");
+  assert.deepEqual(player.calls, ["play-required", "started", "complete"]);
   assert.equal(player.pending(), 0);
 });
 
-test("a stalled download reaches its fallback deadline", () => {
+test("slow loading offers manual playback instead of the obsolete animation", () => {
   const player = setup();
-  player.advance(8000);
-  assert.deepEqual(player.calls, ["fallback"]);
-  assert.equal(player.pending(), 0);
+  player.advance(12000);
+  assert.deepEqual(player.calls, ["play-required"]);
+  player.event("playing");
+  assert.deepEqual(
+    player.calls,
+    ["play-required"],
+    "late autoplay cannot bypass waiting for a tap",
+  );
+  player.play();
+  player.event("playing");
+  player.event("ended");
+  assert.deepEqual(player.calls, ["play-required", "started", "complete"]);
+});
+
+test("reduced motion waits for explicit playback and never autoplays", () => {
+  let attempts = 0;
+  const player = setup(() => {
+    attempts++;
+    return Promise.resolve();
+  }, false);
+  assert.equal(attempts, 0);
+  assert.deepEqual(player.calls, ["play-required"]);
+  player.resumeAfter(60000);
+  assert.equal(attempts, 0);
+  player.play();
+  assert.equal(attempts, 1);
+  player.event("playing");
+  player.event("ended");
+  assert.deepEqual(player.calls, ["play-required", "started", "complete"]);
+});
+
+test("unsupported video and media errors release the ticket", async () => {
+  const unsupported = setup(() =>
+    Promise.reject(new DOMException("Unsupported", "NotSupportedError")),
+  );
+  await new Promise(setImmediate);
+  assert.deepEqual(unsupported.calls, ["unavailable"]);
+  assert.equal(unsupported.pending(), 0);
+  const broken = setup();
+  broken.event("error");
+  assert.deepEqual(broken.calls, ["unavailable"]);
+  assert.equal(broken.pending(), 0);
+});
+
+test("late rejection from an older attempt cannot interrupt manual playback", async () => {
+  let reject;
+  const player = setup(
+    () =>
+      new Promise((_, fail) => {
+        reject = fail;
+      }),
+  );
+  player.advance(12000);
+  player.video.play = () => Promise.resolve();
+  player.play();
+  player.event("playing");
+  reject(new DOMException("Aborted", "AbortError"));
+  await new Promise(setImmediate);
+  player.event("ended");
+  assert.deepEqual(player.calls, ["play-required", "started", "complete"]);
 });
 
 test("decoder stalls and repeated playing events cannot extend the deadline", () => {

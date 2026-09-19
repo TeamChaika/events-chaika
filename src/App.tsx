@@ -710,9 +710,6 @@ function SingleTicket() {
     <>
       {introActive && data && (
         <CinematicIntro
-          qrImage={data.qr_image}
-          age={data.event.age}
-          demo={data.mode !== "live"}
           ticketUrl={location.pathname + "?intro=skip"}
           onComplete={() => setShowIntro(false)}
         />
