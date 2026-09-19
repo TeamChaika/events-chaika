@@ -27,6 +27,11 @@ function setup(play = () => Promise.resolve(), autoPlay = true) {
   const video = new EventTarget();
   video.paused = true;
   video.ended = false;
+  video.currentTime = 0;
+  video.error = null;
+  video.load = () => {
+    video.error = null;
+  };
   video.play = play;
   video.pause = () => {
     video.paused = true;
@@ -51,7 +56,6 @@ function setup(play = () => Promise.resolve(), autoPlay = true) {
       onStarted: () => calls.push("started"),
       onComplete: () => calls.push("complete"),
       onPlayRequired: () => calls.push("play-required"),
-      onUnavailable: () => calls.push("unavailable"),
     },
     clock,
     { autoPlay },
@@ -127,18 +131,17 @@ test("blocked autoplay waits for a tap, then plays the same video", async () => 
   assert.equal(player.pending(), 0);
 });
 
-test("slow loading offers manual playback instead of the obsolete animation", () => {
+test("slow loading offers a retry without cancelling pending playback", () => {
   const player = setup();
-  player.advance(12000);
+  let pauses = 0;
+  player.video.pause = () => {
+    pauses++;
+  };
+  player.advance(20000);
   assert.deepEqual(player.calls, ["play-required"]);
+  assert.equal(pauses, 0);
   player.event("playing");
-  assert.deepEqual(
-    player.calls,
-    ["play-required"],
-    "late autoplay cannot bypass waiting for a tap",
-  );
-  player.play();
-  player.event("playing");
+  assert.deepEqual(player.calls, ["play-required", "started"]);
   player.event("ended");
   assert.deepEqual(player.calls, ["play-required", "started", "complete"]);
 });
@@ -160,17 +163,63 @@ test("reduced motion waits for explicit playback and never autoplays", () => {
   assert.deepEqual(player.calls, ["play-required", "started", "complete"]);
 });
 
-test("unsupported video and media errors release the ticket", async () => {
+test("unsupported video and media errors keep the invitation open for retry", async () => {
   const unsupported = setup(() =>
     Promise.reject(new DOMException("Unsupported", "NotSupportedError")),
   );
   await new Promise(setImmediate);
-  assert.deepEqual(unsupported.calls, ["unavailable"]);
-  assert.equal(unsupported.pending(), 0);
+  assert.deepEqual(unsupported.calls, ["play-required"]);
   const broken = setup();
+  broken.video.error = { code: 2 };
   broken.event("error");
-  assert.deepEqual(broken.calls, ["unavailable"]);
-  assert.equal(broken.pending(), 0);
+  broken.advance(60000);
+  assert.deepEqual(broken.calls, ["play-required"]);
+});
+
+test("one retry reloads a failed media resource and plays inside the tap", () => {
+  const player = setup();
+  player.video.error = { code: 3 };
+  player.event("error");
+  const sequence = [];
+  player.video.load = () => {
+    sequence.push("load");
+    player.video.error = null;
+  };
+  player.video.play = () => {
+    sequence.push("play");
+    assert.equal(player.video.error, null);
+    return Promise.resolve();
+  };
+  player.play();
+  assert.deepEqual(sequence, ["load", "play"]);
+  player.event("playing");
+  player.event("ended");
+  assert.deepEqual(player.calls, ["play-required", "started", "complete"]);
+});
+
+test("focus does not issue competing play requests during loading", () => {
+  let attempts = 0;
+  const player = setup(() => {
+    attempts++;
+    return new Promise(() => {});
+  });
+  player.resumeAfter(50);
+  player.resumeAfter(50);
+  assert.equal(attempts, 1);
+  player.cancel();
+});
+
+test("autoplay rejection never pauses the resource", async () => {
+  const player = setup(() =>
+    Promise.reject(new DOMException("Blocked", "NotAllowedError")),
+  );
+  let pauses = 0;
+  player.video.pause = () => {
+    pauses++;
+  };
+  await new Promise(setImmediate);
+  assert.equal(pauses, 0);
+  assert.deepEqual(player.calls, ["play-required"]);
 });
 
 test("late rejection from an older attempt cannot interrupt manual playback", async () => {
@@ -181,7 +230,7 @@ test("late rejection from an older attempt cannot interrupt manual playback", as
         reject = fail;
       }),
   );
-  player.advance(12000);
+  player.advance(20000);
   player.video.play = () => Promise.resolve();
   player.play();
   player.event("playing");
@@ -191,22 +240,49 @@ test("late rejection from an older attempt cannot interrupt manual playback", as
   assert.deepEqual(player.calls, ["play-required", "started", "complete"]);
 });
 
-test("decoder stalls and repeated playing events cannot extend the deadline", () => {
+test("a stalled decoder offers retry instead of silently opening the ticket", () => {
   const player = setup();
   player.event("playing");
   player.advance(7000);
   player.event("playing");
-  player.advance(5000);
-  assert.deepEqual(player.calls, ["started", "complete"]);
-  assert.equal(player.pending(), 0);
+  player.advance(8000);
+  assert.deepEqual(player.calls, ["started", "play-required"]);
 });
 
-test("return from a suspended browser immediately releases an overdue ticket", () => {
+test("return from a suspended browser keeps an unfinished invitation available", () => {
   const player = setup();
   player.event("playing");
   player.resumeAfter(60000);
+  assert.deepEqual(player.calls, ["started", "play-required"]);
+});
+
+test("actual media progress renews the stall timeout during buffering", () => {
+  const player = setup();
+  player.video.paused = false;
+  player.event("playing");
+  player.advance(14000);
+  player.video.currentTime = 2;
+  player.event("timeupdate");
+  player.advance(14000);
+  assert.deepEqual(player.calls, ["started"]);
+  player.event("ended");
   assert.deepEqual(player.calls, ["started", "complete"]);
-  assert.equal(player.pending(), 0);
+});
+
+test("an unexpected browser pause exposes a resume button", () => {
+  const player = setup();
+  player.event("playing");
+  player.event("pause");
+  assert.deepEqual(player.calls, ["started", "play-required"]);
+  player.play();
+  player.event("playing");
+  player.event("ended");
+  assert.deepEqual(player.calls, [
+    "started",
+    "play-required",
+    "started",
+    "complete",
+  ]);
 });
 
 test("unmount ignores late autoplay rejections and media events", async () => {

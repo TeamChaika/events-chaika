@@ -19,23 +19,26 @@ const browserClock: VideoIntroClock = {
   },
 };
 
-// Autoplay denial is recoverable through a direct user gesture. Media failures
-// release the ticket; neither case should replace the current invitation.
+// Keep playback errors recoverable. Only an ended video or the explicit skip
+// action should reveal the ticket, including when a mobile browser suspends media.
 export function startVideoIntro(
   video: HTMLVideoElement,
   callbacks: {
     onStarted: () => void;
     onComplete: () => void;
     onPlayRequired: () => void;
-    onUnavailable: () => void;
   },
   clock: VideoIntroClock = browserClock,
   options: { autoPlay: boolean } = { autoPlay: true },
 ) {
   let stopped = false;
+  let requested = false;
   let started = false;
   let waitingForTap = false;
+  let pendingPlay = false;
+  let needsReload = false;
   let attempt = 0;
+  let lastTime = video.currentTime;
   let deadline = Infinity;
   let timer: number | undefined;
   let unsubscribe = () => {};
@@ -50,84 +53,118 @@ export function startVideoIntro(
     clearTimer();
     video.removeEventListener("playing", onPlaying);
     video.removeEventListener("ended", onEnded);
-    video.removeEventListener("error", unavailable);
+    video.removeEventListener("error", onError);
+    video.removeEventListener("pause", onPause);
+    video.removeEventListener("timeupdate", onProgress);
     unsubscribe();
     video.pause();
   };
-  const finish = (callback: () => void) => {
+  const complete = () => {
     if (stopped) return;
     stop();
-    callback();
+    callbacks.onComplete();
   };
-  const complete = () => finish(callbacks.onComplete);
-  const unavailable = () => finish(callbacks.onUnavailable);
   const requireTap = () => {
     if (stopped || waitingForTap) return;
     waitingForTap = true;
-    attempt++;
+    started = false;
     clearTimer();
     deadline = Infinity;
-    video.pause();
+    // pause() would cancel a still-pending play() on slow mobile connections.
+    // Leave it intact: a late successful start is also a valid recovery.
     callbacks.onPlayRequired();
   };
+  const watchForStall = (delay: number) => {
+    clearTimer();
+    deadline = clock.now() + delay;
+    timer = clock.after(requireTap, delay);
+  };
+  const onError = () => {
+    if (!video.error) return; // Ignore an old queued error after load() reset it.
+    needsReload = true;
+    pendingPlay = false;
+    attempt++;
+    requireTap();
+  };
   const onEnded = () => {
-    if (started && !waitingForTap) complete();
+    if (started) complete();
+  };
+  const onPause = () => {
+    if (started && !video.ended) requireTap();
   };
   const onPlaying = () => {
     if (stopped) return;
-    if (waitingForTap) {
+    if (!requested) {
       video.pause();
       return;
     }
+    pendingPlay = false;
     if (started) return;
     started = true;
-    clearTimer();
-    // The published clip lasts 8 seconds; the extra time allows brief buffering.
-    deadline = clock.now() + 12000;
-    timer = clock.after(complete, 12000);
+    waitingForTap = false;
+    lastTime = video.currentTime;
+    watchForStall(15000);
     callbacks.onStarted();
   };
-  const tryPlay = () => {
+  const onProgress = () => {
+    if (!started) return;
+    if (video.ended) {
+      complete();
+    } else if (video.currentTime > lastTime && !video.paused) {
+      lastTime = video.currentTime;
+      watchForStall(15000);
+    }
+  };
+  const tryPlay = (reload = false) => {
     const currentAttempt = ++attempt;
+    pendingPlay = true;
     const rejected = (error: unknown) => {
-      if (stopped || waitingForTap || currentAttempt !== attempt) return;
+      if (stopped || currentAttempt !== attempt) return;
+      pendingPlay = false;
       if (error instanceof Error && error.name === "NotSupportedError") {
-        unavailable();
-      } else {
-        requireTap();
+        needsReload = true;
       }
+      requireTap();
     };
     try {
-      video.muted = true;
-      video.defaultMuted = true;
-      video.playsInline = true;
-      Promise.resolve(video.play()).catch(rejected);
+      if (reload) {
+        needsReload = false;
+        video.load();
+      }
+      Promise.resolve(video.play()).then(() => {
+        if (currentAttempt === attempt) pendingPlay = false;
+      }, rejected);
     } catch (error) {
       rejected(error);
     }
   };
   const play = () => {
     if (stopped) return;
+    requested = true;
     waitingForTap = false;
-    started = false;
-    clearTimer();
-    deadline = clock.now() + 12000;
-    timer = clock.after(requireTap, 12000);
-    // Keep this call synchronous: iOS requires play() inside the click handler.
-    tryPlay();
+    watchForStall(20000);
+    // Reset failed media and play synchronously within the same trusted tap.
+    tryPlay(needsReload || video.error !== null);
   };
   const resume = () => {
     if (stopped || waitingForTap) return;
-    if (clock.now() >= deadline) {
-      (started ? complete : requireTap)();
-    } else if (video.paused && !video.ended) {
+    if (video.ended && started) {
+      complete();
+    } else if (clock.now() >= deadline) {
+      requireTap();
+    } else if (!pendingPlay && video.paused) {
       tryPlay();
     }
   };
 
+  video.muted = true;
+  video.defaultMuted = true;
+  video.playsInline = true;
   video.addEventListener("playing", onPlaying);
   video.addEventListener("ended", onEnded);
-  video.addEventListener("error", unavailable);
+  video.addEventListener("error", onError);
+  video.addEventListener("pause", onPause);
+  video.addEventListener("timeupdate", onProgress);
   unsubscribe = clock.subscribe(resume);
   if (options.autoPlay) play();
   else requireTap();

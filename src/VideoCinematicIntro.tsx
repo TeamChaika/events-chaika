@@ -53,7 +53,6 @@ export function VideoCinematicIntro({
           setWaitingForTap(true);
         },
         onComplete: () => setRevealing(true),
-        onUnavailable: () => complete.current(),
       },
       undefined,
       { autoPlay },
@@ -91,7 +90,7 @@ export function VideoCinematicIntro({
       <div className="cinema-video-stage" aria-hidden="true">
         <video
           ref={video}
-          src="/assets/ticket-intro-mriya-envelope.mp4"
+          src="/assets/ticket-intro-mriya-envelope-mobile.mp4"
           poster="/assets/ticket-intro-mriya-envelope.jpg"
           muted
           playsInline
