@@ -675,7 +675,9 @@ function OrderPage() {
   );
 }
 function SingleTicket() {
-  const [showIntro, setShowIntro] = useState(true);
+  const [showIntro, setShowIntro] = useState(
+    () => new URLSearchParams(location.search).get("intro") !== "skip",
+  );
   const [data, setData] = useState<
       TicketData & {
         event: EventData;
@@ -711,6 +713,7 @@ function SingleTicket() {
           qrImage={data.qr_image}
           age={data.event.age}
           demo={data.mode !== "live"}
+          ticketUrl={location.pathname + "?intro=skip"}
           onComplete={() => setShowIntro(false)}
         />
       )}

@@ -41,6 +41,9 @@ function fakeClock(initialVisibility = true) {
       visible = value;
       for (const callback of listeners) callback();
     },
+    suspend(ms) {
+      time += ms;
+    },
     advance(ms) {
       const end = time + ms;
       for (;;) {
@@ -60,7 +63,7 @@ function fakeClock(initialVisibility = true) {
 }
 const flush = () => new Promise(setImmediate);
 
-test("background loading does not consume the visible intro duration", () => {
+test("a short background pause preserves the full visible intro duration", () => {
   const clock = fakeClock(false);
   let completed = 0;
   startVisibleIntroTimer(
@@ -69,7 +72,7 @@ test("background loading does not consume the visible intro duration", () => {
     () => {},
     clock,
   );
-  clock.advance(20000);
+  clock.advance(3000);
   assert.equal(completed, 0);
   clock.setVisible(true);
   clock.advance(4199);
@@ -90,7 +93,7 @@ test("switching away pauses the clock and resumes only the remaining time", () =
   );
   clock.advance(2000);
   clock.setVisible(false);
-  clock.advance(60000);
+  clock.advance(3000);
   assert.equal(completed, 0);
   clock.setVisible(true);
   clock.advance(4499);
@@ -98,6 +101,34 @@ test("switching away pauses the clock and resumes only the remaining time", () =
   clock.advance(1);
   assert.equal(completed, 1);
   assert.deepEqual(states, [true, false, true, false]);
+  assert.equal(clock.listeners(), 0);
+});
+
+test("a stuck hidden state cannot keep the ticket covered indefinitely", () => {
+  const clock = fakeClock(false);
+  let completed = 0;
+  startVisibleIntroTimer(6500, () => completed++, () => {}, clock);
+  clock.advance(10499);
+  assert.equal(completed, 0);
+  clock.advance(1);
+  assert.equal(completed, 1);
+  clock.setVisible(true);
+  clock.advance(20000);
+  assert.equal(completed, 1);
+  assert.equal(clock.pending(), 0);
+  assert.equal(clock.listeners(), 0);
+});
+
+test("returning after browser suspension completes an overdue intro immediately", () => {
+  const clock = fakeClock();
+  let completed = 0;
+  startVisibleIntroTimer(6500, () => completed++, () => {}, clock);
+  clock.advance(1000);
+  clock.setVisible(false);
+  clock.suspend(60000);
+  clock.setVisible(true);
+  assert.equal(completed, 1);
+  assert.equal(clock.pending(), 0);
   assert.equal(clock.listeners(), 0);
 });
 

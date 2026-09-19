@@ -19,11 +19,13 @@ export function CinematicIntro({
   qrImage,
   age,
   demo,
+  ticketUrl,
   onComplete,
 }: {
   qrImage: string;
   age: number;
   demo: boolean;
+  ticketUrl: string;
   onComplete: () => void;
 }) {
   const [revealing, setRevealing] = useState(false);
@@ -36,11 +38,13 @@ export function CinematicIntro({
     TICKET_INTRO_DURATION,
   );
   const complete = useRef(onComplete);
+  const openTicketLink = useRef<HTMLAnchorElement>(null);
   complete.current = onComplete;
 
   useEffect(() => {
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    openTicketLink.current?.focus({ preventScroll: true });
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") complete.current();
     };
@@ -127,9 +131,9 @@ export function CinematicIntro({
           <i />
         </div>
       </div>
-      <button className="cinema-skip" onClick={onComplete} autoFocus>
-        Пропустить <ArrowUpRight size={14} aria-hidden="true" />
-      </button>
+      <a className="cinema-skip" href={ticketUrl} ref={openTicketLink}>
+        Открыть билет <ArrowUpRight size={14} aria-hidden="true" />
+      </a>
     </div>
   );
 }

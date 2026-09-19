@@ -239,6 +239,7 @@
   padding: 11px 16px;
   min-height: 44px;
   cursor: pointer;
+  text-decoration: none;
 }
 .cinema-skip {
   position: absolute;

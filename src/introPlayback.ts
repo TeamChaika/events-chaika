@@ -7,17 +7,24 @@ export interface IntroClock {
 }
 
 const browserClock: IntroClock = {
-  now: () => performance.now(),
+  now: () => Date.now(),
   visible: () => document.visibilityState !== "hidden",
   after: (callback, delay) => window.setTimeout(callback, delay),
   cancel: (timer) => window.clearTimeout(timer),
   subscribe: (callback) => {
     document.addEventListener("visibilitychange", callback);
-    return () => document.removeEventListener("visibilitychange", callback);
+    window.addEventListener("pageshow", callback);
+    window.addEventListener("focus", callback);
+    return () => {
+      document.removeEventListener("visibilitychange", callback);
+      window.removeEventListener("pageshow", callback);
+      window.removeEventListener("focus", callback);
+    };
   },
 };
 
-// Only time actually spent in the foreground counts toward the intro.
+// Preserve short foreground interruptions, but never let a stale mobile
+// visibility state leave the intro blocking access to the ticket indefinitely.
 export function startVisibleIntroTimer(
   duration: number,
   onComplete: () => void,
@@ -27,8 +34,11 @@ export function startVisibleIntroTimer(
   let remaining = duration;
   let started: number | null = null;
   let timer: number | undefined;
+  let deadlineTimer: number | undefined;
   let stopped = false;
   let unsubscribe = () => {};
+  const maxDuration = duration + 4000;
+  const deadline = clock.now() + maxDuration;
   const pause = () => {
     if (timer !== undefined) clock.cancel(timer);
     timer = undefined;
@@ -36,8 +46,24 @@ export function startVisibleIntroTimer(
       remaining = Math.max(0, remaining - (clock.now() - started));
     started = null;
   };
+  const stop = () => {
+    stopped = true;
+    pause();
+    if (deadlineTimer !== undefined) clock.cancel(deadlineTimer);
+    unsubscribe();
+  };
+  const finish = () => {
+    if (stopped) return;
+    stop();
+    onPlaying(false);
+    onComplete();
+  };
   const update = () => {
     if (stopped) return;
+    if (clock.now() >= deadline) {
+      finish();
+      return;
+    }
     pause();
     const visible = clock.visible();
     onPlaying(visible);
@@ -48,19 +74,13 @@ export function startVisibleIntroTimer(
         update();
         return;
       }
-      stopped = true;
-      unsubscribe();
-      onPlaying(false);
-      onComplete();
+      finish();
     }, remaining);
   };
   unsubscribe = clock.subscribe(update);
+  deadlineTimer = clock.after(finish, maxDuration);
   update();
-  return () => {
-    stopped = true;
-    pause();
-    unsubscribe();
-  };
+  return stop;
 }
 
 export interface IntroImage {
