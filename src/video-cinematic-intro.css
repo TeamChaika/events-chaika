@@ -69,20 +69,6 @@
   transform: scaleX(var(--video-progress, 0));
   transition: transform 250ms linear;
 }
-@media (max-width: 600px) and (orientation: portrait) {
-  .cinema-video-stage {
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    aspect-ratio: auto;
-    transform: none;
-  }
-  .cinema-video-stage video {
-    object-fit: cover;
-    object-position: center;
-    mask-image: none;
-  }
-}
 @media (prefers-reduced-motion: reduce) {
   .cinema-video-stage,
   .cinema-video-intro .cinema-progress i {
