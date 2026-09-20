@@ -60,6 +60,11 @@
 .cinema-play:hover {
   background: #4e1827;
 }
+.cinema-play:active {
+  /* Keep the hit area in place instead of inheriting the global button scale. */
+  transform: translate(-50%, -50%);
+  background: #4e1827;
+}
 .cinema-play:focus-visible {
   outline: 2px solid #ffac97;
   outline-offset: 5px;
