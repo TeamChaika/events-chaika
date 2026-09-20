@@ -146,7 +146,23 @@ export function VideoCinematicIntro({
           />
         </div>
       </div>
-      <a className="cinema-skip" href={ticketUrl} ref={openTicketLink}>
+      <a
+        className="cinema-skip"
+        href={ticketUrl}
+        ref={openTicketLink}
+        onClick={(event) => {
+          if (
+            event.button !== 0 ||
+            event.metaKey ||
+            event.ctrlKey ||
+            event.shiftKey ||
+            event.altKey
+          )
+            return;
+          event.preventDefault();
+          complete.current();
+        }}
+      >
         Открыть билет <ArrowUpRight size={14} aria-hidden="true" />
       </a>
     </div>

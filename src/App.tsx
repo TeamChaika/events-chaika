@@ -678,6 +678,17 @@ function SingleTicket() {
   const [showIntro, setShowIntro] = useState(
     () => new URLSearchParams(location.search).get("intro") !== "skip",
   );
+  useEffect(() => {
+    const url = new URL(location.href);
+    if (url.searchParams.get("intro") !== "skip") return;
+    // Legacy direct-to-ticket links skip this visit only, not every reload.
+    url.searchParams.delete("intro");
+    history.replaceState(
+      history.state,
+      "",
+      url.pathname + url.search + url.hash,
+    );
+  }, []);
   const [data, setData] = useState<
       TicketData & {
         event: EventData;
