@@ -359,8 +359,23 @@ html {
   gap: 24px;
   margin-top: 22px;
 }
-.venue-brands .event-partners .brand {
-  width: 142px;
+.venue-brands .brand {
+  width: 112px;
+}
+.contact-phone {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  color: #ddd0c8;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.contact-phone svg {
+  color: #e46c5d;
+}
+.contact-phone:hover {
+  color: #fff;
 }
 .event-location {
   display: flex;
@@ -2876,14 +2891,14 @@ td .diagnostic {
 /* Display the supplied logo without its white outer margins. */
 .brand {
   display: inline-flex;
-  width: 190px;
+  width: 130px;
   max-width: 100%;
   flex-shrink: 0;
 }
 .brand-mark {
   display: block;
   width: 100%;
-  aspect-ratio: 2880 / 509;
+  aspect-ratio: 1648 / 768;
   overflow: hidden;
   position: relative;
   mix-blend-mode: screen;
@@ -2891,11 +2906,11 @@ td .diagnostic {
 .brand-mark img {
   display: block;
   position: absolute;
-  width: 115.765%;
+  width: 126.457%;
   height: auto;
   max-width: none;
-  left: -7.847%;
-  top: -57.17%;
+  left: -13.228%;
+  top: -18.229%;
 }
 .public-footer .brand {
   width: 155px;

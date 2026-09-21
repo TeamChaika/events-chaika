@@ -1,38 +1,25 @@
 import React, { useEffect, useRef } from "react";
-import { X, LoaderCircle } from "lucide-react";
+import { X, LoaderCircle, Phone } from "lucide-react";
 export function Brand() {
   return (
-    <a className="brand" href="/" aria-label="ChaikaTeam — главная">
+    <a className="brand" href="/" aria-label="Гастро Двор — главная">
       <span className="brand-mark">
         <img
-          src="/assets/chaikateam.png"
-          alt="ChaikaTeam"
-          width="3334"
-          height="1093"
+          src="/assets/gastro-dvor.png"
+          alt="Гастро Двор"
+          width="2084"
+          height="1049"
         />
       </span>
     </a>
   );
 }
-export function EventPartners() {
+export function ContactPhone() {
   return (
-    <div
-      className="event-partners"
-      role="group"
-      aria-label="ChaikaTeam и Мрия — совместное событие"
-    >
-      <Brand />
-      <span className="partner-cross" aria-hidden="true">
-        ×
-      </span>
-      <img
-        className="partner-logo"
-        src="/assets/partner-mriya.svg"
-        alt="Мрия"
-        width="170"
-        height="40"
-      />
-    </div>
+    <a className="contact-phone" href="tel:+79787873000">
+      <Phone size={16} aria-hidden="true" />
+      +7 978 78 73 000
+    </a>
   );
 }
 export function ErrorNotice({ text }: { text: string }) {

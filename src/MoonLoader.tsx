@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { EventPartners } from "./ui";
+import { Brand } from "./ui";
 import "./moon-loader.css";
 
 export function MoonLoader({
@@ -32,7 +32,7 @@ export function MoonLoader({
     >
       <div className="loader-clouds loader-clouds-back" aria-hidden="true" />
       <div className="loader-brand" inert aria-hidden="true">
-        <EventPartners />
+        <Brand />
       </div>
       <div className="loader-cosmos" aria-hidden="true">
         <div className="loader-halo" />

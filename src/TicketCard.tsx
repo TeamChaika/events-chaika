@@ -1,5 +1,5 @@
 import { ArrowUpRight, MapPin } from "lucide-react";
-import { EventPartners } from "./ui";
+import { Brand, ContactPhone } from "./ui";
 import { dateLabel, type EventData, type TicketData } from "./types";
 
 export function TicketCard({
@@ -29,7 +29,7 @@ export function TicketCard({
           <div className="ticket-grid" />
         </div>
         <div className="ticket-top">
-          <EventPartners />
+          <Brand />
           <span className="ticket-age">{event.age}+</span>
         </div>
         <div className="ticket-edition">
@@ -69,16 +69,6 @@ export function TicketCard({
           </span>
           <ArrowUpRight size={14} aria-hidden="true" />
         </a>
-        {redMoon && (
-          <span className="venue-logo ticket-venue-logo">
-            <img
-              src="/assets/gastro-dvor.png"
-              alt="Gastro Dvor"
-              width="2084"
-              height="1049"
-            />
-          </span>
-        )}
       </div>
       <div className="ticket-perforation" aria-hidden="true">
         <span />
@@ -115,6 +105,7 @@ export function TicketCard({
         <a className="ticket-own-link" href={"/ticket/" + ticket.code}>
           Открыть отдельный билет <ArrowUpRight size={12} />
         </a>
+        <ContactPhone />
       </div>
     </article>
   );

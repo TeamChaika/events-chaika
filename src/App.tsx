@@ -30,7 +30,7 @@ import {
 } from "./types";
 import {
   Brand,
-  EventPartners,
+  ContactPhone,
   ErrorNotice,
   Spinner,
   Modal,
@@ -289,17 +289,7 @@ function EventLanding({
               </span>
             </div>
             <div className="venue-brands">
-              <EventPartners />
-              {event.id === "red-moon" && (
-                <span className="venue-logo">
-                  <img
-                    src="/assets/gastro-dvor.png"
-                    alt="Gastro Dvor"
-                    width="2084"
-                    height="1049"
-                  />
-                </span>
-              )}
+              <Brand />
             </div>
             <a
               className="event-location"
@@ -315,6 +305,7 @@ function EventLanding({
               </span>
               <ArrowUpRight size={15} aria-hidden="true" />
             </a>
+            <ContactPhone />
             <div className="hero-actions">
               <button
                 className="button primary ticket-cta"

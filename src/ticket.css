@@ -96,8 +96,8 @@
 .real-ticket .event-partners {
   gap: 12px;
 }
-.real-ticket .event-partners .brand {
-  width: 108px;
+.real-ticket .ticket-top .brand {
+  width: 100px;
 }
 .real-ticket .partner-logo {
   width: 80px;
@@ -379,7 +379,7 @@
   .real-ticket .event-partners {
     gap: 9px;
   }
-  .real-ticket .event-partners .brand {
+  .real-ticket .ticket-top .brand {
     width: 96px;
   }
   .real-ticket .partner-logo {
@@ -427,7 +427,7 @@
   .real-ticket .event-partners {
     gap: 10px;
   }
-  .real-ticket .event-partners .brand {
+  .real-ticket .ticket-top .brand {
     width: 92px;
   }
   .real-ticket .partner-logo {
