@@ -344,6 +344,21 @@ function EventLanding({
         </button>
         <small>@ Чайка Тим, 2026</small>
       </footer>
+      <div className="mobile-buy-bar" hidden={buy || privacy || introActive}>
+        <div className="hero-price">
+          <strong>{money(event.price)}</strong>
+          <span>за одного гостя</span>
+        </div>
+        <button
+          className="button primary"
+          disabled={!canBuy}
+          onClick={() => setBuy(true)}
+        >
+          <Ticket size={18} aria-hidden="true" />
+          {canBuy ? "Купить билет" : "Продажа закрыта"}
+          <ArrowUpRight size={19} aria-hidden="true" />
+        </button>
+      </div>
       {buy && (
         <Checkout event={event} config={config} close={() => setBuy(false)} />
       )}
