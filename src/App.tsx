@@ -47,21 +47,6 @@ import {
 } from "./useIntroPlayback";
 import { TicketCard } from "./TicketCard";
 
-function Bat({ index }: { index: number }) {
-  return (
-    <div className={"bat bat-" + index}>
-      <svg viewBox="0 0 160 70" aria-hidden="true">
-        <g className="bat-left">
-          <path d="M80 38C64 15 31 18 1 1 13 21 13 33 11 46 28 31 35 41 40 53 54 42 65 47 76 62Z" />
-        </g>
-        <g className="bat-right">
-          <path d="M80 38C96 15 129 18 159 1 147 21 147 33 149 46 132 31 125 41 120 53 106 42 95 47 84 62Z" />
-        </g>
-        <path d="M73 29 73 16 80 26 87 16 87 30Q100 45 80 67 60 45 73 29Z" />
-      </svg>
-    </div>
-  );
-}
 function Countdown({ event }: { event: EventData }) {
   const [time, setTime] = useState(Date.now());
   useEffect(() => {
@@ -249,11 +234,6 @@ function EventLanding({
             </div>
             <div className="mist mist-one" />
             <div className="mist mist-two" />
-          </div>
-          <div className="bats" aria-hidden="true">
-            {[2, 3, 4, 5, 6].map((i) => (
-              <Bat key={i} index={i} />
-            ))}
           </div>
           <div className="hero-side-label">
             HALLOWEEN NIGHT · {event.date.slice(0, 4)}
