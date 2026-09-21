@@ -705,3 +705,116 @@ test("ephemeral hosting fails closed without PostgreSQL", async () => {
     else process.env.REQUIRE_POSTGRES = old;
   }
 });
+
+test("five real QR images admit three guests first and two later, with shared counters", async (t) => {
+  const { PNG } = await import("pngjs");
+  const {
+    RGBLuminanceSource,
+    BinaryBitmap,
+    HybridBinarizer,
+    QRCodeReader,
+    DecodeHintType,
+  } = await import("@zxing/library");
+  const h = await harness(t);
+  const order = await h.order({ ...guest, quantity: 5 });
+  await h.store.markPaid(order.body.id);
+  const paid = await h.request("/orders/" + order.body.access_token);
+  assert.equal(paid.body.tickets.length, 5);
+  const decoded = paid.body.tickets.map((ticket) => {
+    const png = PNG.sync.read(
+      Buffer.from(ticket.qr_image.split(",")[1], "base64"),
+    );
+    const pixels = new Int32Array(png.width * png.height);
+    for (let i = 0; i < pixels.length; i++)
+      pixels[i] =
+        (png.data[i * 4] << 16) |
+        (png.data[i * 4 + 1] << 8) |
+        png.data[i * 4 + 2];
+    return new QRCodeReader()
+      .decode(
+        new BinaryBitmap(
+          new HybridBinarizer(
+            new RGBLuminanceSource(pixels, png.width, png.height),
+          ),
+        ),
+        // The API supplies a clean QR image; camera perspective needs a device check.
+        new Map([[DecodeHintType.PURE_BARCODE, true]]),
+      )
+      .getText();
+  });
+  assert.equal(
+    (await h.request("/checkin/summary?event_id=red-moon")).status,
+    401,
+  );
+  await h.login("door");
+  for (let i = 0; i < 3; i++) {
+    const scan = await h.request("/checkin", {
+      method: "POST",
+      body: { code: decoded[i], event_id: "red-moon" },
+    });
+    assert.equal(scan.body.accepted, true);
+    assert.deepEqual(scan.body.group, {
+      issued: 5,
+      checked: i + 1,
+      remaining: 4 - i,
+    });
+  }
+  const counts = await h.request("/checkin/summary?event_id=red-moon");
+  assert.equal(counts.body.checked, 3);
+  assert.equal(counts.body.remaining, 2);
+  const duplicate = await h.request("/checkin", {
+    method: "POST",
+    body: { code: decoded[0], event_id: "red-moon" },
+  });
+  assert.equal(duplicate.body.accepted, false);
+  assert.deepEqual(duplicate.body.group, {
+    issued: 5,
+    checked: 3,
+    remaining: 2,
+  });
+  for (const code of decoded.slice(3))
+    assert.equal(
+      (
+        await h.request("/checkin", {
+          method: "POST",
+          body: { code, event_id: "red-moon" },
+        })
+      ).body.accepted,
+      true,
+    );
+  const final = await h.request("/checkin/summary?event_id=red-moon");
+  assert.equal(final.body.checked, 5);
+  assert.equal(final.body.remaining, 0);
+  await h.login();
+  const overview = await h.request("/admin/overview");
+  assert.equal(
+    overview.body.orders.find((o) => o.id === order.body.id).checked_count,
+    5,
+  );
+});
+
+test("live attendance counts exclude demo tickets and invalid orders", async (t) => {
+  const h = await harness(t);
+  const demoOrder = await h.order({ ...guest, quantity: 2 });
+  await h.store.markPaid(demoOrder.body.id);
+  const realOrder = await h.order({ ...guest, quantity: 3 });
+  await h.store.markPaid(realOrder.body.id);
+  await h.store.run(
+    "UPDATE orders SET mode='live' WHERE id=?",
+    realOrder.body.id,
+  );
+  assert.deepEqual(await h.store.attendance("red-moon"), {
+    issued: 3,
+    checked: 0,
+    remaining: 3,
+  });
+  await h.store.run(
+    "UPDATE orders SET status='cancelled' WHERE id=?",
+    realOrder.body.id,
+  );
+  assert.deepEqual(await h.store.attendance("red-moon"), {
+    issued: 0,
+    checked: 0,
+    remaining: 0,
+  });
+});

@@ -37,6 +37,7 @@ type AdminOrder = {
   phone: string;
   email: string;
   quantity: number;
+  checked_count: number;
   total: number;
   status: string;
   method: string;
@@ -459,7 +460,14 @@ export function Admin() {
                                   )}
                                 </small>
                               </td>
-                              <td>{o.quantity}</td>
+                              <td>
+                                {o.quantity}
+                                {o.status === "paid" && (
+                                  <small>
+                                    Вошли {o.checked_count} из {o.quantity}
+                                  </small>
+                                )}
+                              </td>
                               <td>
                                 {money(o.total)}
                                 {o.mode !== "live" && (
@@ -804,7 +812,12 @@ function Stats({ data }: { data: Overview }) {
           money(data.stats.revenue),
           "СБП и наличные",
         ],
-        [Users, "На мероприятии", data.stats.checked, "Прошли контроль входа"],
+        [
+          Users,
+          "Прошли на входе",
+          data.stats.checked,
+          "Первый проход по билету",
+        ],
       ].map(([Icon, title, value, sub]) => {
         const I = Icon as typeof Ticket;
         return (
@@ -1190,6 +1203,14 @@ function Checkin({
   onChecked: () => void;
 }) {
   const [event, setEvent] = useState(events[0]?.id || ""),
+    [summary, setSummary] = useState<{
+      issued: number;
+      checked: number;
+      remaining: number;
+      updated_at: string;
+    }>(),
+    [summaryStale, setSummaryStale] = useState(false),
+    [summaryRevision, setSummaryRevision] = useState(0),
     [code, setCode] = useState(""),
     [camera, setCamera] = useState(false),
     [busy, setBusy] = useState(false),
@@ -1200,6 +1221,7 @@ function Checkin({
       ordinal: number;
       used_at: string;
       mode: string;
+      group: { issued: number; checked: number; remaining: number };
     }>();
   const video = useRef<HTMLVideoElement>(null),
     stop = useRef<() => void>(() => {}),
@@ -1207,6 +1229,38 @@ function Checkin({
     scanFn = useRef<(v: string) => Promise<void>>(async () => {});
   const scannerPanel = useRef<HTMLElement>(null);
   const resultPanel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!event) return;
+    let cancelled = false,
+      refreshing = false;
+    async function refresh() {
+      if (refreshing || document.hidden) return;
+      refreshing = true;
+      try {
+        const next = await api<NonNullable<typeof summary>>(
+          "/checkin/summary?event_id=" + encodeURIComponent(event),
+        );
+        if (!cancelled) {
+          setSummary(next);
+          setSummaryStale(false);
+        }
+      } catch {
+        if (!cancelled) setSummaryStale(true);
+      } finally {
+        refreshing = false;
+      }
+    }
+    void refresh();
+    const interval = setInterval(refresh, 10000);
+    window.addEventListener("online", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      window.removeEventListener("online", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [event, summaryRevision]);
   useEffect(() => {
     if (!matchMedia("(max-width:800px)").matches) return;
     const target = result
@@ -1235,11 +1289,13 @@ function Checkin({
         ordinal: number;
         used_at: string;
         mode: string;
+        group: { issued: number; checked: number; remaining: number };
       }>("/checkin", {
         method: "POST",
         body: JSON.stringify({ event_id: event, code: value }),
       });
       setResult(r);
+      setSummaryRevision((v) => v + 1);
       onChecked();
     } catch (e) {
       setResult(undefined);
@@ -1297,6 +1353,8 @@ function Checkin({
               stop.current();
               setCamera(false);
               setEvent(e.target.value);
+              setSummary(undefined);
+              setSummaryStale(false);
               setResult(undefined);
             }}
           >
@@ -1307,6 +1365,25 @@ function Checkin({
             ))}
           </select>
         </label>
+        <div className="attendance-summary" aria-label="Статистика входа">
+          {[
+            ["Выпущено", summary?.issued],
+            ["Прошли", summary?.checked],
+            ["Ещё не пришли", summary?.remaining],
+          ].map(([label, count]) => (
+            <div key={String(label)}>
+              <strong>{count ?? "—"}</strong>
+              <span>{label}</span>
+            </div>
+          ))}
+        </div>
+        <p className="small-text muted">
+          {summaryStale
+            ? "Нет связи с сервером. Счётчики могут быть устаревшими; проход не подтверждается."
+            : summary
+              ? `Обновлено ${new Date(summary.updated_at).toLocaleTimeString("ru-RU")}. Учёт первых входов, без выходов.`
+              : "Загружаем статистику входа…"}
+        </p>
         <div className={"camera-stage " + (camera ? "camera-live" : "")}>
           {camera ? (
             <>
@@ -1380,6 +1457,12 @@ function Checkin({
             <h2>{result.accepted ? "Добро пожаловать!" : "Уже использован"}</h2>
             <h3>{result.name}</h3>
             <p>Билет № {result.ordinal}</p>
+            {result.group && (
+              <p>
+                По заказу вошли {result.group.checked} из {result.group.issued}.
+                Ещё не пришли: {result.group.remaining}.
+              </p>
+            )}
             <p>
               {result.accepted ? "Проход подтверждён" : "Первый проход"} в{" "}
               {new Date(result.used_at).toLocaleTimeString("ru-RU")}

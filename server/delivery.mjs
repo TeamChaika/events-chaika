@@ -28,7 +28,7 @@ export function ticketSms(event, tickets, origin) {
   if (!tickets.length) throw new Error("sms_tickets_missing");
   return `Гастро Двор. ${event.title}.\n${tickets.map((ticket) => `${origin}/ticket/${ticket.code}`).join("\n")}`;
 }
-export function telegramOrderText(order, event, tickets, sms) {
+export function telegramOrderText(order, event, tickets, sms, origin) {
   const status =
     {
       paid: "Оплачено",
@@ -52,7 +52,14 @@ export function telegramOrderText(order, event, tickets, sms) {
     (tickets.length
       ? "СМС ожидает отправки"
       : "СМС будет отправлено после выпуска билетов");
-  return `${event.title}\n${order.first_name} ${order.last_name}\n${order.phone}\nБилетов: ${order.quantity} · ${(order.total / 100).toLocaleString("ru-RU")} ₽\nСпособ: ${{ sbp: "СБП", cash: "Наличные", invite: "Пригласительный" }[order.method] || order.method}\nСтатус: ${status}\n${tickets.length ? `Билеты выпущены: ${tickets.length}` : "Билеты ещё не выпущены"}\n${smsStatus}\nЗаказ: ${order.id.slice(0, 8)}`;
+  const links =
+    order.status === "paid" && tickets.length
+      ? "\n\nБилеты для пересылки гостю:\n" +
+        tickets
+          .map((t) => `Билет ${t.ordinal}: ${origin}/ticket/${t.code}`)
+          .join("\n")
+      : "";
+  return `${event.title}\n${order.first_name} ${order.last_name}\n${order.phone}\nБилетов: ${order.quantity} · ${(order.total / 100).toLocaleString("ru-RU")} ₽\nСпособ: ${{ sbp: "СБП", cash: "Наличные", invite: "Пригласительный" }[order.method] || order.method}\nСтатус: ${status}\n${tickets.length ? `Билеты выпущены: ${tickets.length}` : "Билеты ещё не выпущены"}\n${smsStatus}\nЗаказ: ${order.id.slice(0, 8)}${links}`;
 }
 export async function deliver(job, order, event, tickets, origin, sms) {
   const link = `${origin}/order/${order.access_token}`;
@@ -87,7 +94,7 @@ export async function deliver(job, order, event, tickets, origin, sms) {
   } else if (job.channel === "sms") {
     return sendSmsAero(order.phone, ticketSms(event, tickets, origin));
   } else {
-    const text = telegramOrderText(order, event, tickets, sms);
+    const text = telegramOrderText(order, event, tickets, sms, origin);
     return job.provider_id
       ? telegram.edit(job.provider_id, text)
       : telegram.send(text);

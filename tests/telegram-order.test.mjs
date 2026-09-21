@@ -135,3 +135,40 @@ test("failed SMS and payment review are not reported as delivered or issued", ()
   assert.match(text, /Билеты ещё не выпущены/);
   assert.match(text, /СМС не доставлено/);
 });
+
+test("paid Telegram message contains one numbered direct link per ticket for manual forwarding", () => {
+  const tickets = Array.from({ length: 5 }, (_, i) => ({
+    ordinal: i + 1,
+    code: String(i).repeat(48),
+  }));
+  const order = {
+    status: "paid",
+    method: "sbp",
+    id: "fixture",
+    total: 2500,
+    quantity: 5,
+  };
+  const text = telegramOrderText(
+    order,
+    { title: "Ночь" },
+    tickets,
+    { status: "failed" },
+    "https://example.com",
+  );
+  for (const ticket of tickets)
+    assert.ok(
+      text.includes(
+        `Билет ${ticket.ordinal}: https://example.com/ticket/${ticket.code}`,
+      ),
+    );
+  assert.doesNotMatch(text, /\/order\//);
+  assert.ok(text.length < 4096);
+  const pending = telegramOrderText(
+    { ...order, status: "pending" },
+    { title: "Ночь" },
+    [],
+    undefined,
+    "https://example.com",
+  );
+  assert.doesNotMatch(pending, /\/ticket\//);
+});

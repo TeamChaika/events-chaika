@@ -99,6 +99,7 @@ export function createTelegramClient(
       const result = await call("sendMessage", {
         chat_id: process.env.TELEGRAM_CHAT_ID,
         text,
+        link_preview_options: { is_disabled: true },
       });
       if (!Number.isSafeInteger(result?.message_id))
         throw new Error("telegram_unknown");
@@ -114,6 +115,7 @@ export function createTelegramClient(
         chat_id: process.env.TELEGRAM_CHAT_ID,
         message_id: Number(messageId),
         text,
+        link_preview_options: { is_disabled: true },
       });
       if (result?.message_id !== Number(messageId))
         throw new Error("telegram_unknown");

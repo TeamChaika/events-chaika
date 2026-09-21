@@ -486,21 +486,22 @@ export async function createApp({
     );
     if (req.staff.role === "door") return res.json({ events });
     const orders = await store.all(
-      "SELECT o.id,o.event_id,o.first_name,o.last_name,o.phone,o.email,o.quantity,o.total,o.status,o.method,o.mode,o.created_at,o.paid_at,o.checked_at,o.diagnostic,o.access_token,e.title FROM orders o JOIN events e ON e.id=o.event_id ORDER BY o.created_at DESC LIMIT 500",
+      "SELECT o.id,o.event_id,o.first_name,o.last_name,o.phone,o.email,o.quantity,o.total,o.status,o.method,o.mode,o.created_at,o.paid_at,o.checked_at,o.diagnostic,o.access_token,e.title,(SELECT COUNT(*) FROM tickets t WHERE t.order_id=o.id AND t.used_at IS NOT NULL) AS checked_count FROM orders o JOIN events e ON e.id=o.event_id ORDER BY o.created_at DESC LIMIT 500",
+    );
+    const attendance = await store.get(
+      "SELECT COUNT(*) AS sold,COALESCE(SUM(CASE WHEN t.used_at IS NOT NULL THEN 1 ELSE 0 END),0) AS checked FROM tickets t JOIN orders o ON o.id=t.order_id WHERE o.status='paid' AND (?=1 OR o.mode='live')",
+      demo ? 1 : 0,
     );
     res.json({
       events,
       orders,
       stats: {
-        sold: (await store.get("SELECT COUNT(*) n FROM tickets")).n,
-        checked: (
-          await store.get(
-            "SELECT COUNT(*) n FROM tickets WHERE used_at IS NOT NULL",
-          )
-        ).n,
+        sold: attendance.sold,
+        checked: attendance.checked,
         revenue: (
           await store.get(
-            "SELECT COALESCE(SUM(total),0) n FROM orders WHERE status='paid' AND method!='invite'",
+            "SELECT COALESCE(SUM(total),0) n FROM orders WHERE status='paid' AND method!='invite' AND (?=1 OR mode='live')",
+            demo ? 1 : 0,
           )
         ).n,
       },
@@ -713,6 +714,12 @@ export async function createApp({
       res.json({ ok: true });
     },
   );
+  app.get("/api/checkin/summary", staff, async (req, res) => {
+    const eventId = z.string().max(100).parse(req.query.event_id);
+    if (!(await store.event(eventId)))
+      throw new AppError(404, "Мероприятие не найдено");
+    res.json({ ...(await store.attendance(eventId, demo)), updated_at: now() });
+  });
   app.post("/api/checkin", staff, async (req, res) => {
     const eventId = z.string().parse(req.body.event_id);
     let code = z.string().max(500).parse(req.body.code).trim();
@@ -728,6 +735,7 @@ export async function createApp({
       used_at: t.used_at,
       method: t.method,
       mode: t.mode,
+      group: t.group,
     });
   });
   app.use("/api", (_req, _res, next) => next(new AppError(404, "Не найдено")));

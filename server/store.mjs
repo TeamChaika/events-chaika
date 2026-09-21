@@ -180,6 +180,21 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
       );
       await issue(id);
     });
+  const attendance = async (eventId, allowTest = false) => {
+    const counts = await get(
+      "SELECT COUNT(*) AS issued,COALESCE(SUM(CASE WHEN t.used_at IS NOT NULL THEN 1 ELSE 0 END),0) AS checked FROM tickets t JOIN orders o ON o.id=t.order_id WHERE o.event_id=? AND o.status='paid' AND (?=1 OR o.mode='live')",
+      eventId,
+      allowTest ? 1 : 0,
+    );
+    return { ...counts, remaining: counts.issued - counts.checked };
+  };
+  const orderAttendance = async (orderId) => {
+    const counts = await get(
+      "SELECT COUNT(*) AS issued,COALESCE(SUM(CASE WHEN used_at IS NOT NULL THEN 1 ELSE 0 END),0) AS checked FROM tickets WHERE order_id=?",
+      orderId,
+    );
+    return { ...counts, remaining: counts.issued - counts.checked };
+  };
   const checkin = async (code, eventId, actor, allowTest = false) =>
     await transaction(async () => {
       const t = await get(
@@ -192,7 +207,12 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
       if (t.event_id !== eventId)
         throw new AppError(409, "Билет на другое мероприятие");
       if (t.status !== "paid") throw new AppError(409, "Билет недействителен");
-      if (t.used_at) return { accepted: false, ...t };
+      if (t.used_at)
+        return {
+          accepted: false,
+          ...t,
+          group: await orderAttendance(t.order_id),
+        };
       const now = new Date().toISOString();
       await run(
         "UPDATE tickets SET used_at=?,used_by=? WHERE id=? AND used_at IS NULL",
@@ -201,7 +221,12 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
         t.id,
       );
       await audit("checkin", t.id, actor);
-      return { ...t, accepted: true, used_at: now };
+      return {
+        ...t,
+        accepted: true,
+        used_at: now,
+        group: await orderAttendance(t.order_id),
+      };
     });
   return {
     db,
@@ -215,6 +240,7 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
     enqueue,
     markPaid,
     checkin,
+    attendance,
   };
 }
 

@@ -1542,6 +1542,28 @@ td .diagnostic {
   grid-template-columns: 1.15fr 1fr;
   gap: 25px;
 }
+.attendance-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 20px;
+}
+.attendance-summary > div {
+  padding: 12px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  text-align: center;
+}
+.attendance-summary strong {
+  display: block;
+  font-size: 24px;
+}
+.attendance-summary span {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 10px;
+}
 .scanner-card {
   padding: 25px;
   border: 1px solid var(--line);
