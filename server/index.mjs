@@ -88,6 +88,10 @@ export async function createApp({
       new Date(Date.now() - 120000).toISOString(),
     );
     await store.run(
+      "UPDATE outbox SET status='retry',error='Обновление сообщения прервано; повторяем редактирование' WHERE status='sending' AND channel='telegram' AND provider_id IS NOT NULL AND attempts<9 AND next_at<?",
+      Date.now(),
+    );
+    await store.run(
       "UPDATE outbox SET status='unknown',error='Отправка прервана. Проверьте сервис' WHERE status='sending' AND next_at<?",
       Date.now(),
     );

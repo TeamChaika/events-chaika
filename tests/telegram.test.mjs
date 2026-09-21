@@ -72,3 +72,35 @@ test("Telegram distinguishes provider rejection from invalid acknowledgement", a
     message: "telegram_unknown",
   });
 });
+
+test("Telegram edits the known message and accepts an already applied edit", async (t) => {
+  setup(t);
+  let count = 0;
+  const client = createTelegramClient(
+    async (url, options) => {
+      assert.ok(url.endsWith("/editMessageText"));
+      assert.equal(JSON.parse(options.body).message_id, 42);
+      count++;
+      return count === 1
+        ? Response.json({ ok: true, result: { message_id: 42 } })
+        : Response.json(
+            {
+              ok: false,
+              error_code: 400,
+              description:
+                "Bad Request: message is not modified: specified new message content is exactly the same",
+            },
+            { status: 400 },
+          );
+    },
+    () => undefined,
+  );
+  assert.deepEqual(await client.edit("42", "Оплачено"), {
+    status: "sent",
+    providerId: "42",
+  });
+  assert.deepEqual(await client.edit("42", "Оплачено"), {
+    status: "sent",
+    providerId: "42",
+  });
+});

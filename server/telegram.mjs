@@ -63,6 +63,13 @@ export function createTelegramClient(
         reader.releaseLock();
       }
       const body = JSON.parse(Buffer.concat(chunks).toString());
+      if (
+        method === "editMessageText" &&
+        body.error_code === 400 &&
+        typeof body.description === "string" &&
+        body.description.startsWith("Bad Request: message is not modified")
+      )
+        return { message_id: data.message_id };
       if (!response.ok || body.ok !== true)
         throw new Error(
           body.ok === false ? "telegram_rejected" : "telegram_unknown",
@@ -96,6 +103,21 @@ export function createTelegramClient(
       if (!Number.isSafeInteger(result?.message_id))
         throw new Error("telegram_unknown");
       return { status: "sent", providerId: String(result.message_id) };
+    },
+    async edit(messageId, text) {
+      if (
+        !/^\d+$/.test(String(messageId)) ||
+        !Number.isSafeInteger(Number(messageId))
+      )
+        throw new Error("telegram_rejected");
+      const result = await call("editMessageText", {
+        chat_id: process.env.TELEGRAM_CHAT_ID,
+        message_id: Number(messageId),
+        text,
+      });
+      if (result?.message_id !== Number(messageId))
+        throw new Error("telegram_unknown");
+      return { status: "sent", providerId: String(messageId) };
     },
   };
 }

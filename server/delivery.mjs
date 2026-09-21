@@ -2,6 +2,7 @@ import nodemailer from "nodemailer";
 import QRCode from "qrcode";
 import { smsAeroReady, sendSmsAero, readSmsAeroStatus } from "./smsaero.mjs";
 import { telegram } from "./telegram.mjs";
+import { randomUUID } from "node:crypto";
 const escape = (s) =>
   String(s).replace(
     /[&<>"']/g,
@@ -27,7 +28,33 @@ export function ticketSms(event, tickets, origin) {
   if (!tickets.length) throw new Error("sms_tickets_missing");
   return `Гастро Двор. ${event.title}.\n${tickets.map((ticket) => `${origin}/ticket/${ticket.code}`).join("\n")}`;
 }
-export async function deliver(job, order, event, tickets, origin) {
+export function telegramOrderText(order, event, tickets, sms) {
+  const status =
+    {
+      paid: "Оплачено",
+      invited: "Пригласительный",
+      pending: "Ожидает оплаты",
+      creating: "Ожидает оплаты",
+      expired: "Срок оплаты истёк",
+      cancelled: "Отменён",
+      paid_review: "Оплачено, требуется проверка мест",
+      unknown: "Оплата проверяется",
+    }[order.status] || "Требует проверки";
+  const smsStatus =
+    {
+      delivered: "СМС доставлено",
+      submitted: "СМС отправлено, ожидаем доставку",
+      sent: "СМС отправлено, доставка не подтверждена",
+      failed: "СМС не доставлено",
+      unknown: "Доставка СМС не подтверждена",
+      disabled: "Отправка СМС не подключена",
+    }[sms?.status] ||
+    (tickets.length
+      ? "СМС ожидает отправки"
+      : "СМС будет отправлено после выпуска билетов");
+  return `${event.title}\n${order.first_name} ${order.last_name}\n${order.phone}\nБилетов: ${order.quantity} · ${(order.total / 100).toLocaleString("ru-RU")} ₽\nСпособ: ${{ sbp: "СБП", cash: "Наличные", invite: "Пригласительный" }[order.method] || order.method}\nСтатус: ${status}\n${tickets.length ? `Билеты выпущены: ${tickets.length}` : "Билеты ещё не выпущены"}\n${smsStatus}\nЗаказ: ${order.id.slice(0, 8)}`;
+}
+export async function deliver(job, order, event, tickets, origin, sms) {
   const link = `${origin}/order/${order.access_token}`;
   if (job.channel === "email") {
     const transporter = nodemailer.createTransport({
@@ -60,19 +87,33 @@ export async function deliver(job, order, event, tickets, origin) {
   } else if (job.channel === "sms") {
     return sendSmsAero(order.phone, ticketSms(event, tickets, origin));
   } else {
-    return telegram.send(
-      `${job.kind === "created" ? "Новый заказ" : job.kind === "review" ? "Оплата требует проверки мест" : "Билеты выпущены"} · ${event.title}\n${order.first_name} ${order.last_name}\n${order.phone}\nБилетов: ${order.quantity} · ${(order.total / 100).toLocaleString("ru-RU")} ₽\nСпособ: ${order.method}\nСтатус: ${order.status}\nЗаказ: ${order.id.slice(0, 8)}`,
-    );
+    const text = telegramOrderText(order, event, tickets, sms);
+    return job.provider_id
+      ? telegram.edit(job.provider_id, text)
+      : telegram.send(text);
   }
 }
 
 export async function processOutbox(store, origin, demo) {
+  // A durable, deduplicated update after the provider confirms (or fails) SMS delivery.
+  if (!demo && channelReady("telegram")) {
+    const updates = await store.all(
+      "SELECT s.order_id,s.status FROM outbox s JOIN orders o ON o.id=s.order_id WHERE s.channel='sms' AND s.kind='tickets' AND s.status IN ('delivered','failed','unknown','disabled') AND o.mode='live' AND EXISTS (SELECT 1 FROM outbox t WHERE t.order_id=s.order_id AND t.channel='telegram' AND t.status='sent' AND t.provider_id IS NOT NULL) AND NOT EXISTS (SELECT 1 FROM outbox u WHERE u.order_id=s.order_id AND u.channel='telegram' AND u.kind='sms_' || s.status)",
+    );
+    for (const update of updates)
+      await store.run(
+        "INSERT OR IGNORE INTO outbox(id,order_id,channel,kind) VALUES (?,?,'telegram',?)",
+        randomUUID(),
+        update.order_id,
+        `sms_${update.status}`,
+      );
+  }
   const jobs = await store.all(
     "SELECT * FROM outbox WHERE status IN ('pending','retry') AND next_at<=? ORDER BY rowid LIMIT 10",
     Date.now(),
   );
   for (const job of jobs) {
-    const o = await store.get("SELECT * FROM orders WHERE id=?", job.order_id);
+    let o = await store.get("SELECT * FROM orders WHERE id=?", job.order_id);
     if (demo || o.mode !== "live" || !channelReady(job.channel)) {
       await store.run(
         "UPDATE outbox SET status='disabled',error='Отправка не подключена или заказ тестовый' WHERE id=?",
@@ -80,13 +121,38 @@ export async function processOutbox(store, origin, demo) {
       );
       continue;
     }
-    const claimed = await store.run(
-      "UPDATE outbox SET status='sending',attempts=attempts+1,next_at=? WHERE id=? AND status IN ('pending','retry')",
-      Date.now() + 120000,
-      job.id,
-    );
+    const claimed = await store.transaction(async () => {
+      if (job.channel === "telegram") {
+        const existing = await store.get(
+          "SELECT provider_id FROM outbox WHERE order_id=? AND channel='telegram' AND provider_id IS NOT NULL ORDER BY rowid LIMIT 1",
+          job.order_id,
+        );
+        const blocked = await store.get(
+          "SELECT id FROM outbox WHERE order_id=? AND channel='telegram' AND id<>? AND (status='sending' OR (status='unknown' AND provider_id IS NULL AND ?=0)) LIMIT 1",
+          job.order_id,
+          job.id,
+          existing ? 1 : 0,
+        );
+        if (blocked) {
+          await store.run(
+            "UPDATE outbox SET next_at=? WHERE id=? AND status IN ('pending','retry')",
+            Date.now() + 30000,
+            job.id,
+          );
+          return { changes: 0 };
+        }
+        job.provider_id = existing?.provider_id || job.provider_id;
+      }
+      return store.run(
+        "UPDATE outbox SET status='sending',attempts=attempts+1,next_at=?,provider_id=? WHERE id=? AND status IN ('pending','retry')",
+        Date.now() + 120000,
+        job.provider_id || null,
+        job.id,
+      );
+    });
     if (!claimed.changes) continue;
     try {
+      o = await store.get("SELECT * FROM orders WHERE id=?", job.order_id);
       const delivery = await deliver(
         job,
         o,
@@ -96,6 +162,10 @@ export async function processOutbox(store, origin, demo) {
           o.id,
         ),
         origin,
+        await store.get(
+          "SELECT status FROM outbox WHERE order_id=? AND channel='sms' AND kind='tickets'",
+          o.id,
+        ),
       );
       await store.run(
         "UPDATE outbox SET status=?,sent_at=?,provider_id=?,provider_status=?,status_attempts=0,next_at=?,error=? WHERE id=?",
@@ -118,7 +188,10 @@ export async function processOutbox(store, origin, demo) {
       ].includes(error.message);
       await store.run(
         "UPDATE outbox SET status=?,next_at=?,error=? WHERE id=?",
-        definite && job.attempts < 2 ? "retry" : "unknown",
+        (job.channel === "telegram" && job.provider_id && job.attempts < 8) ||
+          (definite && job.attempts < 2)
+          ? "retry"
+          : "unknown",
         Date.now() + 60000,
         definite
           ? "Сервис отклонил отправку"

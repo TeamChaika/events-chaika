@@ -220,6 +220,8 @@ html {
   overflow: hidden;
 }
 .hero-art {
+  /* Keep the breathing scene inside its opaque bottom fade. */
+  overflow: hidden;
   --scene-position: 60% 42%;
   position: absolute;
   inset: -45px -20px -20px -20px;
