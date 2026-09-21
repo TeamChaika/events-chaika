@@ -1252,12 +1252,15 @@ function Checkin({
     }
     void refresh();
     const interval = setInterval(refresh, 10000);
+    const markOffline = () => setSummaryStale(true);
     window.addEventListener("online", refresh);
+    window.addEventListener("offline", markOffline);
     document.addEventListener("visibilitychange", refresh);
     return () => {
       cancelled = true;
       clearInterval(interval);
       window.removeEventListener("online", refresh);
+      window.removeEventListener("offline", markOffline);
       document.removeEventListener("visibilitychange", refresh);
     };
   }, [event, summaryRevision]);
@@ -1280,6 +1283,7 @@ function Checkin({
     inFlight.current = true;
     setBusy(true);
     setError("");
+    setResult(undefined);
     stop.current();
     setCamera(false);
     try {
@@ -1484,10 +1488,11 @@ function Checkin({
             <div className="circle-symbol">
               <Ticket size={25} />
             </div>
-            <h3>Готовы встречать гостей</h3>
+            <h3>{busy ? "Проверяем билет…" : "Готовы встречать гостей"}</h3>
             <p>
-              Здесь появится результат проверки: имя гостя и разрешение на
-              проход.
+              {busy
+                ? "Ожидаем подтверждение сервера. Пока не пропускайте гостя."
+                : "Здесь появится результат проверки: имя гостя и разрешение на проход."}
             </p>
             <div className="scan-legend">
               <span>
