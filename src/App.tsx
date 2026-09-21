@@ -475,6 +475,9 @@ function Checkout({
 }
 function OrderPage() {
   const access = location.pathname.split("/")[2];
+  const [showIntro, setShowIntro] = useState(
+    () => new URLSearchParams(location.search).get("intro") !== "skip",
+  );
   const [order, setOrder] = useState<OrderData>(),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
@@ -488,11 +491,33 @@ function OrderPage() {
   }
   useEffect(() => {
     load();
+    const refresh = () => {
+      if (!document.hidden) load();
+    };
+    window.addEventListener("pageshow", refresh);
+    document.addEventListener("visibilitychange", refresh);
     const t = setInterval(() => {
       if (!document.hidden) load();
     }, 4000);
-    return () => clearInterval(t);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener("pageshow", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
   }, [access]);
+  const singleTicketPath =
+    order?.status === "paid" && order.tickets.length === 1
+      ? "/ticket/" + order.tickets[0].code
+      : null;
+  useEffect(() => {
+    if (singleTicketPath) location.replace(singleTicketPath);
+  }, [singleTicketPath]);
+  const introActive = Boolean(
+    showIntro &&
+      order?.status === "paid" &&
+      order.event.id === "red-moon" &&
+      order.tickets.length > 1,
+  );
   async function demoPay() {
     setBusy(true);
     try {
@@ -507,162 +532,180 @@ function OrderPage() {
       setBusy(false);
     }
   }
+  if (singleTicketPath) return <Spinner />;
   return (
-    <div className="order-page">
-      <header className="simple-header">
-        <Brand />
-        <a href="/" className="text-link">
-          <ChevronLeft size={16} />
-          На афишу
-        </a>
-      </header>
-      <main className="order-main">
-        <ErrorNotice text={error} />
-        {!order ? (
-          <Spinner />
-        ) : order.status === "paid" ? (
-          <>
-            <div className="success-icon">
-              <Check />
-            </div>
-            <span className="eyebrow quiet">ДО ВСТРЕЧИ ПОД КРАСНОЙ ЛУНОЙ</span>
-            <h1>Эта ночь — ваша.</h1>
-            <p className="muted">
-              {order.first_name},{" "}
-              {order.quantity === 1 ? "ваш билет готов" : "ваши билеты готовы"}.
-              Покажите QR на входе.
-            </p>
-            {order.mode !== "live" && (
-              <div className="demo-note">
-                Тестовые билеты · оплата не проводилась
+    <>
+      {introActive && (
+        <CinematicIntro
+          ticketUrl={location.pathname + "?intro=skip"}
+          onComplete={() => setShowIntro(false)}
+        />
+      )}
+      <div
+        className="order-page"
+        inert={introActive}
+        aria-hidden={introActive || undefined}
+      >
+        <header className="simple-header">
+          <Brand />
+          <a href="/" className="text-link">
+            <ChevronLeft size={16} />
+            На афишу
+          </a>
+        </header>
+        <main className="order-main">
+          <ErrorNotice text={error} />
+          {!order ? (
+            <Spinner />
+          ) : order.status === "paid" ? (
+            <>
+              <div className="success-icon">
+                <Check />
               </div>
-            )}
-            <div className="tickets-grid">
-              {order.tickets.map((t) => (
-                <TicketCard
-                  key={t.code}
-                  ticket={t}
-                  event={order.event}
-                  name={`${order.first_name} ${order.last_name}`}
-                  demo={order.mode !== "live"}
-                  quantity={order.quantity}
-                />
-              ))}
-            </div>
-            <button
-              className="button primary print-action"
-              onClick={() => window.print()}
-            >
-              <Download size={18} />
-              Сохранить / распечатать билеты
-            </button>
-            <div className="delivery-info">
-              {order.delivery
-                .filter((d) => d.channel !== "telegram")
-                .map((d) => (
-                  <span key={d.channel}>
-                    {d.channel === "email" ? (
-                      <Mail size={16} />
-                    ) : (
-                      <Smartphone size={16} />
-                    )}{" "}
-                    {d.channel === "email" ? "Почта" : "СМС"}:{" "}
-                    {d.status === "delivered"
-                      ? "доставлено"
-                      : d.status === "failed"
-                        ? "не доставлено"
-                        : ["sent", "submitted"].includes(d.status)
-                          ? "передано сервису"
-                          : d.status === "disabled"
-                            ? "отправка не подключена"
-                            : d.status === "unknown"
-                              ? "нужна проверка отправки"
-                              : "ожидает отправки"}
-                  </span>
+              <span className="eyebrow quiet">
+                ДО ВСТРЕЧИ ПОД КРАСНОЙ ЛУНОЙ
+              </span>
+              <h1>Эта ночь — ваша.</h1>
+              <p className="muted">
+                {order.first_name},{" "}
+                {order.quantity === 1
+                  ? "ваш билет готов"
+                  : "ваши билеты готовы"}
+                . Покажите QR на входе.
+              </p>
+              {order.mode !== "live" && (
+                <div className="demo-note">
+                  Тестовые билеты · оплата не проводилась
+                </div>
+              )}
+              <div className="tickets-grid">
+                {order.tickets.map((t) => (
+                  <TicketCard
+                    key={t.code}
+                    ticket={t}
+                    event={order.event}
+                    name={`${order.first_name} ${order.last_name}`}
+                    demo={order.mode !== "live"}
+                    quantity={order.quantity}
+                  />
                 ))}
+              </div>
+              <button
+                className="button primary print-action"
+                onClick={() => window.print()}
+              >
+                <Download size={18} />
+                Сохранить / распечатать билеты
+              </button>
+              <div className="delivery-info">
+                {order.delivery
+                  .filter((d) => d.channel !== "telegram")
+                  .map((d) => (
+                    <span key={d.channel}>
+                      {d.channel === "email" ? (
+                        <Mail size={16} />
+                      ) : (
+                        <Smartphone size={16} />
+                      )}{" "}
+                      {d.channel === "email" ? "Почта" : "СМС"}:{" "}
+                      {d.status === "delivered"
+                        ? "доставлено"
+                        : d.status === "failed"
+                          ? "не доставлено"
+                          : ["sent", "submitted"].includes(d.status)
+                            ? "передано сервису"
+                            : d.status === "disabled"
+                              ? "отправка не подключена"
+                              : d.status === "unknown"
+                                ? "нужна проверка отправки"
+                                : "ожидает отправки"}
+                    </span>
+                  ))}
+              </div>
+            </>
+          ) : (
+            <div className="payment-panel">
+              <span className="eyebrow quiet">ПОЧТИ ТАМ / ОПЛАТА</span>
+              <h1>
+                {["pending", "creating"].includes(order.status)
+                  ? "До встречи один шаг."
+                  : statusLabel[order.status]}
+              </h1>
+              <p>
+                {order.event.title} · {order.quantity} бил. ·{" "}
+                {money(order.total)}
+              </p>
+              {order.status === "pending" && (
+                <>
+                  {order.mode === "demo" ? (
+                    <div className="demo-payment">
+                      <ShieldCheck size={38} />
+                      <h3>Тестовая оплата через СБП</h3>
+                      <p>
+                        В рабочей версии здесь будет QR QRM и кнопка перехода в
+                        банк. Сейчас можно проверить выпуск билетов без списания
+                        денег.
+                      </p>
+                      <button
+                        className="button primary"
+                        disabled={busy}
+                        onClick={demoPay}
+                      >
+                        {busy ? <Spinner /> : <Check size={18} />}Симулировать
+                        успешную оплату
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <img
+                        className="payment-qr"
+                        src={order.qr_image || ""}
+                        alt="QR для оплаты через СБП"
+                      />
+                      <a
+                        className="button primary"
+                        href={order.payment_url || "#"}
+                      >
+                        Открыть приложение банка
+                        <ArrowUpRight size={18} />
+                      </a>
+                      <p className="muted">
+                        Страница обновится после подтверждения оплаты.
+                      </p>
+                      <p className="micro">
+                        Если окно оплаты закрылось, вернитесь на эту страницу.
+                      </p>
+                    </>
+                  )}
+                </>
+              )}
+              {order.status === "creating" && <Spinner />}
+              {order.status === "unknown" && (
+                <p>
+                  Проверяем результат создания платежа. Не оплачивайте заказ
+                  повторно: свяжитесь с организатором и назовите номер{" "}
+                  {order.id.slice(0, 8)}.
+                </p>
+              )}
+              {["expired", "cancelled", "failed"].includes(order.status) && (
+                <a href="/" className="button secondary">
+                  Вернуться к мероприятию
+                </a>
+              )}
+              {order.status === "paid_review" && (
+                <p>
+                  Платёж подтверждён после завершения резерва. Организатор
+                  проверит наличие мест и свяжется с вами.
+                </p>
+              )}
+              <span className="order-reference">
+                Заказ {order.id.slice(0, 8).toUpperCase()}
+              </span>
             </div>
-          </>
-        ) : (
-          <div className="payment-panel">
-            <span className="eyebrow quiet">ПОЧТИ ТАМ / ОПЛАТА</span>
-            <h1>
-              {["pending", "creating"].includes(order.status)
-                ? "До встречи один шаг."
-                : statusLabel[order.status]}
-            </h1>
-            <p>
-              {order.event.title} · {order.quantity} бил. · {money(order.total)}
-            </p>
-            {order.status === "pending" && (
-              <>
-                {order.mode === "demo" ? (
-                  <div className="demo-payment">
-                    <ShieldCheck size={38} />
-                    <h3>Тестовая оплата через СБП</h3>
-                    <p>
-                      В рабочей версии здесь будет QR QRM и кнопка перехода в
-                      банк. Сейчас можно проверить выпуск билетов без списания
-                      денег.
-                    </p>
-                    <button
-                      className="button primary"
-                      disabled={busy}
-                      onClick={demoPay}
-                    >
-                      {busy ? <Spinner /> : <Check size={18} />}Симулировать
-                      успешную оплату
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <img
-                      className="payment-qr"
-                      src={order.qr_image || ""}
-                      alt="QR для оплаты через СБП"
-                    />
-                    <a
-                      className="button primary"
-                      href={order.payment_url || "#"}
-                    >
-                      Открыть приложение банка
-                      <ArrowUpRight size={18} />
-                    </a>
-                    <p className="muted">
-                      Страница обновится после подтверждения оплаты.
-                    </p>
-                    <p className="micro">
-                      Если окно оплаты закрылось, вернитесь на эту страницу.
-                    </p>
-                  </>
-                )}
-              </>
-            )}
-            {order.status === "creating" && <Spinner />}
-            {order.status === "unknown" && (
-              <p>
-                Проверяем результат создания платежа. Не оплачивайте заказ
-                повторно: свяжитесь с организатором и назовите номер{" "}
-                {order.id.slice(0, 8)}.
-              </p>
-            )}
-            {["expired", "cancelled", "failed"].includes(order.status) && (
-              <a href="/" className="button secondary">
-                Вернуться к мероприятию
-              </a>
-            )}
-            {order.status === "paid_review" && (
-              <p>
-                Платёж подтверждён после завершения резерва. Организатор
-                проверит наличие мест и свяжется с вами.
-              </p>
-            )}
-            <span className="order-reference">
-              Заказ {order.id.slice(0, 8).toUpperCase()}
-            </span>
-          </div>
-        )}
-      </main>
-    </div>
+          )}
+        </main>
+      </div>
+    </>
   );
 }
 function SingleTicket() {

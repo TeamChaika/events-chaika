@@ -16,6 +16,7 @@ import {
 } from "./qrm.mjs";
 import { channelReady, processOutbox } from "./delivery.mjs";
 import { checkSmsAero } from "./smsaero.mjs";
+import { telegram } from "./telegram.mjs";
 
 const hash = (s) => createHash("sha256").update(s).digest("hex");
 const same = (a, b) =>
@@ -669,6 +670,9 @@ export async function createApp({
   });
   app.post("/api/admin/smsaero/check", staff, admin, async (_req, res) => {
     res.json(await checkSmsAero());
+  });
+  app.post("/api/admin/telegram/check", staff, admin, async (_req, res) => {
+    res.json(await telegram.check());
   });
   app.post(
     "/api/admin/deliveries/:id/retry",

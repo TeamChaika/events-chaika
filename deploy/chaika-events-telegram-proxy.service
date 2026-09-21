@@ -1,0 +1,30 @@
+[Unit]
+Description=Chaika Events Telegram-only TLS proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+ExecStart=/usr/bin/python3 /opt/chaika-events-telegram-proxy/telegram-proxy.py
+LoadCredential=auth:/opt/chaika-events-telegram-proxy/auth
+LoadCredential=cert:/opt/chaika-events-supabase/certs/server.crt
+LoadCredential=key:/opt/chaika-events-supabase/certs/server.key
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+MemoryMax=64M
+CPUQuota=20%
+TasksMax=20
+LimitNOFILE=128
+
+[Install]
+WantedBy=multi-user.target

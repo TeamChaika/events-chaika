@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { openStore, seed } from "../server/store.mjs";
-import { processOutbox, channelReady } from "../server/delivery.mjs";
+import { processOutbox, channelReady, ticketSms } from "../server/delivery.mjs";
 import {
   sendSmsAero,
   readSmsAeroStatus,
@@ -71,6 +71,13 @@ async function outbox(t) {
   );
   const id = randomUUID();
   await store.run(
+    "INSERT INTO tickets(id,code,order_id,ordinal) VALUES (?,?,?,?)",
+    randomUUID(),
+    "fixture-ticket",
+    order.id,
+    1,
+  );
+  await store.run(
     "INSERT INTO outbox(id,order_id,channel,kind) VALUES (?,?,?,?)",
     id,
     order.id,
@@ -98,9 +105,9 @@ test("SMS Aero keeps auth out of URL and sends a single ticket link", async (t) 
     );
     assert.equal(options.body.get("number"), phone);
     assert.equal(options.body.get("sign"), "CHAIKATEAM");
-    assert.match(
+    assert.equal(
       options.body.get("text"),
-      /https:\/\/events\.example\.com\/order\/fixture-token/,
+      "Гастро Двор. Ночь красной луны.\nhttps://events.example.com/ticket/fixture-ticket",
     );
     return response(0);
   };
@@ -109,6 +116,25 @@ test("SMS Aero keeps auth out of URL and sends a single ticket link", async (t) 
   assert.equal((await h.job()).provider_id, "123");
   await processOutbox(h.store, "https://events.example.com", false);
   assert.equal(calls, 1);
+});
+test("SMS preserves a direct link to each purchased ticket without order links or quantity text", () => {
+  assert.equal(
+    ticketSms(
+      { title: "Ночь красной луны" },
+      [{ code: "one" }, { code: "two" }],
+      "https://events.example.com",
+    ),
+    "Гастро Двор. Ночь красной луны.\nhttps://events.example.com/ticket/one\nhttps://events.example.com/ticket/two",
+  );
+  assert.throws(
+    () =>
+      ticketSms(
+        { title: "Ночь красной луны" },
+        [],
+        "https://events.example.com",
+      ),
+    /sms_tickets_missing/,
+  );
 });
 test("status reconciliation confirms delivery without another send", async (t) => {
   const h = await outbox(t);

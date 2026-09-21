@@ -1,6 +1,7 @@
 import nodemailer from "nodemailer";
 import QRCode from "qrcode";
 import { smsAeroReady, sendSmsAero, readSmsAeroStatus } from "./smsaero.mjs";
+import { telegram } from "./telegram.mjs";
 const escape = (s) =>
   String(s).replace(
     /[&<>"']/g,
@@ -21,6 +22,10 @@ export function channelReady(channel) {
     : channel === "sms"
       ? smsAeroReady()
       : !!(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID);
+}
+export function ticketSms(event, tickets, origin) {
+  if (!tickets.length) throw new Error("sms_tickets_missing");
+  return `Гастро Двор. ${event.title}.\n${tickets.map((ticket) => `${origin}/ticket/${ticket.code}`).join("\n")}`;
 }
 export async function deliver(job, order, event, tickets, origin) {
   const link = `${origin}/order/${order.access_token}`;
@@ -53,25 +58,11 @@ export async function deliver(job, order, event, tickets, origin) {
     });
     if (!info.accepted?.length) throw new Error("email_rejected");
   } else if (job.channel === "sms") {
-    return sendSmsAero(
-      order.phone,
-      `Чайка Тим. ${event.title}. Ваши билеты (${order.quantity}): ${link}`,
-    );
+    return sendSmsAero(order.phone, ticketSms(event, tickets, origin));
   } else {
-    const res = await fetch(
-      `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`,
-      {
-        method: "POST",
-        signal: AbortSignal.timeout(12000),
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: process.env.TELEGRAM_CHAT_ID,
-          text: `${job.kind === "created" ? "Новый заказ" : job.kind === "review" ? "Оплата требует проверки мест" : "Билеты выпущены"} · ${event.title}\n${order.first_name} ${order.last_name}\n${order.phone}\nБилетов: ${order.quantity} · ${(order.total / 100).toLocaleString("ru-RU")} ₽\nСпособ: ${order.method}\nСтатус: ${order.status}\nЗаказ: ${order.id.slice(0, 8)}`,
-        }),
-      },
+    return telegram.send(
+      `${job.kind === "created" ? "Новый заказ" : job.kind === "review" ? "Оплата требует проверки мест" : "Билеты выпущены"} · ${event.title}\n${order.first_name} ${order.last_name}\n${order.phone}\nБилетов: ${order.quantity} · ${(order.total / 100).toLocaleString("ru-RU")} ₽\nСпособ: ${order.method}\nСтатус: ${order.status}\nЗаказ: ${order.id.slice(0, 8)}`,
     );
-    const body = await res.json();
-    if (!res.ok || !body.ok) throw new Error("telegram_rejected");
   }
 }
 
