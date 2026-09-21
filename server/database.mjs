@@ -90,6 +90,9 @@ export async function openDatabase(path, databaseUrl) {
 
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
+  db.function("unicode_lower", { deterministic: true }, (value) =>
+    String(value ?? "").toLowerCase(),
+  );
   db.exec(
     "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;",
   );

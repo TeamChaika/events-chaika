@@ -28,6 +28,10 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
     CREATE TABLE IF NOT EXISTS tickets (
       id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE, order_id TEXT NOT NULL REFERENCES orders(id),
       ordinal INTEGER NOT NULL, used_at TEXT, used_by TEXT, UNIQUE(order_id,ordinal));
+    CREATE TABLE IF NOT EXISTS checkin_batches (
+      id TEXT PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id), code TEXT NOT NULL,
+      quantity INTEGER NOT NULL CHECK(quantity>0), expected_checked INTEGER NOT NULL,
+      entered_at TEXT NOT NULL, ordinals TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, role TEXT NOT NULL, expires_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS outbox (
       id TEXT PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id), channel TEXT NOT NULL,
@@ -66,6 +70,7 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
             "events",
             "orders",
             "tickets",
+            "checkin_batches",
             "sessions",
             "outbox",
             "audit",
@@ -195,18 +200,171 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
     );
     return { ...counts, remaining: counts.issued - counts.checked };
   };
+  const searchTickets = async (eventId, query, allowTest = false) => {
+    const normalized = query.trim().toLowerCase().replaceAll("ё", "е");
+    const byPhone = /^[+\d\s()-]+$/.test(normalized);
+    const lower = db.kind === "postgres" ? "LOWER" : "unicode_lower";
+    const nameColumn = `REPLACE(${lower}(o.first_name || ' ' || o.last_name),'ё','е')`;
+    let parts;
+    if (byPhone) {
+      let digits = normalized.replace(/\D/g, "");
+      if (digits.length < 4)
+        throw new AppError(400, "Введите не менее 4 цифр телефона");
+      if (digits.length === 11 && /^[78]/.test(digits))
+        digits = digits.slice(1);
+      parts = [digits];
+    } else {
+      if ((normalized.match(/\p{L}/gu) || []).length < 2)
+        throw new AppError(400, "Введите не менее 2 букв имени или фамилии");
+      parts = normalized.split(/\s+/);
+    }
+    const column = byPhone ? "o.phone" : nameColumn;
+    const patterns = parts.map(
+      (part) => "%" + part.replace(/[!%_]/g, (c) => "!" + c) + "%",
+    );
+    const orders = await all(
+      `SELECT o.id,o.first_name,o.last_name,o.phone,o.method,o.mode FROM orders o WHERE o.event_id=? AND o.status='paid' AND (?=1 OR o.mode='live') AND EXISTS (SELECT 1 FROM tickets t WHERE t.order_id=o.id) AND ${parts.map(() => `${column} LIKE ? ESCAPE '!'`).join(" AND ")} ORDER BY o.created_at DESC,o.id LIMIT 21`,
+      eventId,
+      allowTest ? 1 : 0,
+      ...patterns,
+    );
+    const more = orders.length > 20;
+    orders.splice(20);
+    if (!orders.length) return { orders: [], more: false };
+    const tickets = await all(
+      `SELECT order_id,code,ordinal,used_at FROM tickets WHERE order_id IN (${orders.map(() => "?").join(",")}) ORDER BY ordinal`,
+      ...orders.map((o) => o.id),
+    );
+    return {
+      more,
+      orders: orders.map((o) => {
+        const groupTickets = tickets.filter((t) => t.order_id === o.id);
+        const checked = groupTickets.filter((t) => t.used_at).length;
+        return {
+          ...o,
+          group: {
+            issued: groupTickets.length,
+            checked,
+            remaining: groupTickets.length - checked,
+          },
+          tickets: groupTickets.map(({ code, ordinal, used_at }) => ({
+            code,
+            ordinal,
+            used_at,
+          })),
+        };
+      }),
+    };
+  };
+  const ticketForCheckin = async (code, eventId, allowTest) => {
+    const t = await get(
+      `SELECT t.*,o.event_id,o.status,o.mode,o.first_name,o.last_name,o.phone,o.method,e.title FROM tickets t JOIN orders o ON o.id=t.order_id JOIN events e ON e.id=o.event_id WHERE t.code=?`,
+      code,
+    );
+    if (!t) throw new AppError(404, "Билет не найден");
+    if (!allowTest && t.mode !== "live")
+      throw new AppError(409, "Тестовый билет не даёт права прохода");
+    if (t.event_id !== eventId)
+      throw new AppError(409, "Билет на другое мероприятие");
+    if (t.status !== "paid") throw new AppError(409, "Билет недействителен");
+    return t;
+  };
+  const previewCheckin = async (code, eventId, allowTest = false) =>
+    transaction(async () => {
+      const t = await ticketForCheckin(code, eventId, allowTest);
+      return { ...t, group: await orderAttendance(t.order_id) };
+    });
+  const checkinGroup = async (
+    code,
+    eventId,
+    quantity,
+    expectedChecked,
+    requestId,
+    actor,
+    allowTest = false,
+  ) =>
+    transaction(async () => {
+      const t = await ticketForCheckin(code, eventId, allowTest);
+      const previous = await get(
+        "SELECT * FROM checkin_batches WHERE id=?",
+        requestId,
+      );
+      if (previous) {
+        if (
+          previous.order_id !== t.order_id ||
+          previous.code !== code ||
+          previous.quantity !== quantity ||
+          previous.expected_checked !== expectedChecked
+        )
+          throw new AppError(
+            409,
+            "Этот запрос уже использован для другого прохода",
+          );
+        return {
+          ...t,
+          accepted: true,
+          admitted: previous.quantity,
+          ordinals: JSON.parse(previous.ordinals),
+          used_at: previous.entered_at,
+          replayed: true,
+          group: await orderAttendance(t.order_id),
+        };
+      }
+      const group = await orderAttendance(t.order_id);
+      if (group.checked !== expectedChecked)
+        throw new AppError(
+          409,
+          "Количество вошедших изменилось. Обновите данные заказа перед подтверждением.",
+        );
+      if (
+        !Number.isInteger(quantity) ||
+        quantity < 1 ||
+        quantity > group.remaining
+      )
+        throw new AppError(
+          409,
+          `Можно пропустить не более ${group.remaining} гостей`,
+        );
+      const available = await all(
+        "SELECT id,ordinal FROM tickets WHERE order_id=? AND used_at IS NULL ORDER BY CASE WHEN code=? THEN 0 ELSE 1 END,ordinal LIMIT ?",
+        t.order_id,
+        code,
+        quantity,
+      );
+      const enteredAt = new Date().toISOString();
+      for (const ticket of available) {
+        await run(
+          "UPDATE tickets SET used_at=?,used_by=? WHERE id=? AND used_at IS NULL",
+          enteredAt,
+          actor,
+          ticket.id,
+        );
+        await audit("checkin", ticket.id, actor);
+      }
+      const ordinals = available.map((ticket) => ticket.ordinal);
+      await run(
+        "INSERT INTO checkin_batches(id,order_id,code,quantity,expected_checked,entered_at,ordinals) VALUES (?,?,?,?,?,?,?)",
+        requestId,
+        t.order_id,
+        code,
+        quantity,
+        expectedChecked,
+        enteredAt,
+        JSON.stringify(ordinals),
+      );
+      return {
+        ...t,
+        accepted: true,
+        admitted: quantity,
+        ordinals,
+        used_at: enteredAt,
+        replayed: false,
+        group: await orderAttendance(t.order_id),
+      };
+    });
   const checkin = async (code, eventId, actor, allowTest = false) =>
     await transaction(async () => {
-      const t = await get(
-        `SELECT t.*,o.event_id,o.status,o.mode,o.first_name,o.last_name,o.method,e.title FROM tickets t JOIN orders o ON o.id=t.order_id JOIN events e ON e.id=o.event_id WHERE t.code=?`,
-        code,
-      );
-      if (!t) throw new AppError(404, "Билет не найден");
-      if (!allowTest && t.mode !== "live")
-        throw new AppError(409, "Тестовый билет не даёт права прохода");
-      if (t.event_id !== eventId)
-        throw new AppError(409, "Билет на другое мероприятие");
-      if (t.status !== "paid") throw new AppError(409, "Билет недействителен");
+      const t = await ticketForCheckin(code, eventId, allowTest);
       if (t.used_at)
         return {
           accepted: false,
@@ -241,6 +399,9 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
     markPaid,
     checkin,
     attendance,
+    searchTickets,
+    previewCheckin,
+    checkinGroup,
   };
 }
 

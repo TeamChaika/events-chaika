@@ -22,6 +22,32 @@ const hash = (s) => createHash("sha256").update(s).digest("hex");
 const same = (a, b) =>
   timingSafeEqual(Buffer.from(hash(String(a))), Buffer.from(hash(String(b))));
 const now = () => new Date().toISOString();
+const checkinCode = z
+  .string()
+  .max(500)
+  .transform((value) => {
+    const code = value.trim();
+    return code.includes("/ticket/")
+      ? code.split("/ticket/").pop().split(/[?#]/)[0]
+      : code;
+  })
+  .refine((code) => /^[a-f0-9]{48}$/.test(code), "Неверный QR билета");
+const checkinInput = z.object({
+  event_id: z.string().min(1).max(100),
+  code: checkinCode,
+});
+const checkinResponse = (t) => ({
+  accepted: t.accepted,
+  name: `${t.first_name} ${t.last_name}`,
+  ordinal: t.ordinal,
+  used_at: t.used_at,
+  method: t.method,
+  mode: t.mode,
+  group: t.group,
+  ...(t.admitted === undefined
+    ? {}
+    : { admitted: t.admitted, ordinals: t.ordinals, replayed: t.replayed }),
+});
 const customerSchema = z.object({
   first_name: z.string().trim().min(2).max(60),
   last_name: z.string().trim().min(2).max(60),
@@ -714,6 +740,17 @@ export async function createApp({
       res.json({ ok: true });
     },
   );
+  app.post("/api/checkin/search", staff, async (req, res) => {
+    const { event_id, query } = z
+      .object({
+        event_id: z.string().min(1).max(100),
+        query: z.string().trim().min(1).max(120),
+      })
+      .parse(req.body);
+    if (!(await store.event(event_id)))
+      throw new AppError(404, "Мероприятие не найдено");
+    res.json(await store.searchTickets(event_id, query, demo));
+  });
   app.get("/api/checkin/summary", staff, async (req, res) => {
     const eventId = z.string().max(100).parse(req.query.event_id);
     if (!(await store.event(eventId)))
@@ -721,22 +758,36 @@ export async function createApp({
     res.json({ ...(await store.attendance(eventId, demo)), updated_at: now() });
   });
   app.post("/api/checkin", staff, async (req, res) => {
-    const eventId = z.string().parse(req.body.event_id);
-    let code = z.string().max(500).parse(req.body.code).trim();
-    if (code.includes("/ticket/"))
-      code = code.split("/ticket/").pop().split(/[?#]/)[0];
-    if (!/^[a-f0-9]{48}$/.test(code))
-      throw new AppError(400, "Неверный QR билета");
-    const t = await store.checkin(code, eventId, req.staff.role, demo);
-    res.json({
-      accepted: t.accepted,
-      name: `${t.first_name} ${t.last_name}`,
-      ordinal: t.ordinal,
-      used_at: t.used_at,
-      method: t.method,
-      mode: t.mode,
-      group: t.group,
-    });
+    const { event_id, code } = checkinInput.parse(req.body);
+    res.json(
+      checkinResponse(
+        await store.checkin(code, event_id, req.staff.role, demo),
+      ),
+    );
+  });
+  app.post("/api/checkin/preview", staff, async (req, res) => {
+    const { event_id, code } = checkinInput.parse(req.body);
+    const t = await store.previewCheckin(code, event_id, demo);
+    res.json({ ...checkinResponse(t), code, phone: t.phone });
+  });
+  app.post("/api/checkin/group", staff, async (req, res) => {
+    const input = checkinInput
+      .extend({
+        quantity: z.number().int().min(1).max(10),
+        expected_checked: z.number().int().min(0).max(10),
+        request_id: z.uuid(),
+      })
+      .parse(req.body);
+    const t = await store.checkinGroup(
+      input.code,
+      input.event_id,
+      input.quantity,
+      input.expected_checked,
+      input.request_id,
+      req.staff.role,
+      demo,
+    );
+    res.json(checkinResponse(t));
   });
   app.use("/api", (_req, _res, next) => next(new AppError(404, "Не найдено")));
   if (store.db.kind === "postgres")

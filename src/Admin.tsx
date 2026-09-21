@@ -21,6 +21,7 @@ import {
   Send,
 } from "lucide-react";
 import { Brand, ErrorNotice, Spinner, Modal, GuestFields } from "./ui";
+import { GuestSearch } from "./GuestSearch";
 import {
   api,
   money,
@@ -553,7 +554,10 @@ export function Admin() {
                         ДОБРО ПОЖАЛОВАТЬ В НОЧЬ
                       </span>
                       <h1>Контроль входа</h1>
-                      <p>Один QR — один проход. Повторный билет сразу виден.</p>
+                      <p>
+                        Сканируйте QR или найдите гостя. Для группы выберите
+                        количество.
+                      </p>
                     </div>
                     <span className="connection-label">
                       <i />
@@ -1195,6 +1199,21 @@ function IssueForm({
     </Modal>
   );
 }
+type EntryResult = {
+  accepted: boolean;
+  name: string;
+  ordinal: number;
+  used_at: string;
+  mode: string;
+  admitted?: number;
+  ordinals?: number[];
+  replayed?: boolean;
+  group: { issued: number; checked: number; remaining: number };
+};
+type EntrySelection = Omit<EntryResult, "accepted"> & {
+  code: string;
+  phone: string;
+};
 function Checkin({
   events,
   onChecked,
@@ -1211,18 +1230,17 @@ function Checkin({
     }>(),
     [summaryStale, setSummaryStale] = useState(false),
     [summaryRevision, setSummaryRevision] = useState(0),
+    [entryMode, setEntryMode] = useState<"qr" | "search">("qr"),
+    [selection, setSelection] = useState<EntrySelection>(),
+    [quantity, setQuantity] = useState(1),
     [code, setCode] = useState(""),
     [camera, setCamera] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [result, setResult] = useState<{
-      accepted: boolean;
-      name: string;
-      ordinal: number;
-      used_at: string;
-      mode: string;
-      group: { issued: number; checked: number; remaining: number };
-    }>();
+    [result, setResult] = useState<EntryResult>();
+  const groupRequest = useRef<
+    { id: string; code: string; quantity: number; checked: number } | undefined
+  >(undefined);
   const video = useRef<HTMLVideoElement>(null),
     stop = useRef<() => void>(() => {}),
     inFlight = useRef(false),
@@ -1266,35 +1284,40 @@ function Checkin({
   }, [event, summaryRevision]);
   useEffect(() => {
     if (!matchMedia("(max-width:800px)").matches) return;
-    const target = result
-      ? resultPanel.current
-      : camera
-        ? scannerPanel.current
-        : null;
+    const target =
+      result || selection
+        ? resultPanel.current
+        : camera
+          ? scannerPanel.current
+          : null;
     target?.scrollIntoView({
       block: "center",
       behavior: matchMedia("(prefers-reduced-motion:reduce)").matches
         ? "instant"
         : "smooth",
     });
-  }, [result, camera]);
-  async function scan(value: string) {
+  }, [result, selection, camera]);
+  async function scan(value: string, manual = false) {
     if (inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
     setError("");
     setResult(undefined);
+    setSelection(undefined);
     stop.current();
     setCamera(false);
     try {
-      const r = await api<{
-        accepted: boolean;
-        name: string;
-        ordinal: number;
-        used_at: string;
-        mode: string;
-        group: { issued: number; checked: number; remaining: number };
-      }>("/checkin", {
+      const preview = await api<EntrySelection>("/checkin/preview", {
+        method: "POST",
+        body: JSON.stringify({ event_id: event, code: value }),
+      });
+      if (preview.group.issued > 1 || manual) {
+        setSelection(preview);
+        setQuantity(1);
+        groupRequest.current = undefined;
+        return;
+      }
+      const r = await api<EntryResult>("/checkin", {
         method: "POST",
         body: JSON.stringify({ event_id: event, code: value }),
       });
@@ -1303,6 +1326,46 @@ function Checkin({
       onChecked();
     } catch (e) {
       setResult(undefined);
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+      inFlight.current = false;
+    }
+  }
+  async function admitGroup() {
+    if (!selection || inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
+    setError("");
+    const previous = groupRequest.current;
+    if (
+      !previous ||
+      previous.code !== selection.code ||
+      previous.quantity !== quantity ||
+      previous.checked !== selection.group.checked
+    )
+      groupRequest.current = {
+        id: crypto.randomUUID(),
+        code: selection.code,
+        quantity,
+        checked: selection.group.checked,
+      };
+    try {
+      const r = await api<EntryResult>("/checkin/group", {
+        method: "POST",
+        body: JSON.stringify({
+          event_id: event,
+          code: selection.code,
+          quantity,
+          expected_checked: selection.group.checked,
+          request_id: groupRequest.current!.id,
+        }),
+      });
+      setSelection(undefined);
+      setResult(r);
+      setSummaryRevision((v) => v + 1);
+      onChecked();
+    } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusy(false);
@@ -1353,6 +1416,7 @@ function Checkin({
           Проверяем билеты на
           <select
             value={event}
+            disabled={busy}
             onChange={(e) => {
               stop.current();
               setCamera(false);
@@ -1360,6 +1424,8 @@ function Checkin({
               setSummary(undefined);
               setSummaryStale(false);
               setResult(undefined);
+              setSelection(undefined);
+              setError("");
             }}
           >
             {events.map((e) => (
@@ -1388,67 +1454,174 @@ function Checkin({
               ? `Обновлено ${new Date(summary.updated_at).toLocaleTimeString("ru-RU")}. Учёт первых входов, без выходов.`
               : "Загружаем статистику входа…"}
         </p>
-        <div className={"camera-stage " + (camera ? "camera-live" : "")}>
-          {camera ? (
-            <>
-              <video ref={video} playsInline muted />
-              <div className="scan-frame" />
-              <button
-                className="camera-stop icon-button"
-                onClick={() => setCamera(false)}
-                aria-label="Закрыть камеру"
-              >
-                <X />
-              </button>
-            </>
-          ) : (
-            <>
-              <ScanLine size={72} strokeWidth={1} />
-              <h3>Наведите камеру на билет</h3>
-              <p>Подойдёт камера телефона или ноутбука</p>
-              <button
-                className="button primary"
-                disabled={!event || busy}
-                onClick={() => {
-                  setCamera(true);
-                  setResult(undefined);
-                  setError("");
-                }}
-              >
-                <Camera size={18} />
-                Открыть камеру
-              </button>
-            </>
-          )}
-        </div>
-        <div className="manual-divider">или введите код вручную</div>
-        <form
-          className="manual-scan"
-          onSubmit={(e) => {
-            e.preventDefault();
-            scan(code);
-          }}
-        >
-          <input
-            aria-label="Код или ссылка билета"
-            placeholder="Ссылка или полный код билета"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            required
-          />
+        <div className="entry-mode" aria-label="Способ поиска билета">
           <button
-            aria-label="Проверить билет"
-            className="button secondary"
-            disabled={busy || !event}
+            type="button"
+            aria-pressed={entryMode === "qr"}
+            disabled={busy}
+            onClick={() => setEntryMode("qr")}
           >
-            {busy ? <Spinner /> : <ArrowUpRight size={19} />}
-            <span>Проверить</span>
+            <ScanLine size={17} />
+            Сканировать QR
           </button>
-        </form>
+          <button
+            type="button"
+            aria-pressed={entryMode === "search"}
+            disabled={busy}
+            onClick={() => {
+              stop.current();
+              setCamera(false);
+              setEntryMode("search");
+            }}
+          >
+            <Search size={17} />
+            Найти гостя
+          </button>
+        </div>
+        {entryMode === "search" ? (
+          <GuestSearch
+            key={event}
+            eventId={event}
+            revision={summaryRevision}
+            busy={busy}
+            onSelect={(value) => {
+              void scan(value, true);
+            }}
+          />
+        ) : (
+          <>
+            <div className={"camera-stage " + (camera ? "camera-live" : "")}>
+              {camera ? (
+                <>
+                  <video ref={video} playsInline muted />
+                  <div className="scan-frame" />
+                  <button
+                    className="camera-stop icon-button"
+                    onClick={() => setCamera(false)}
+                    aria-label="Закрыть камеру"
+                  >
+                    <X />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <ScanLine size={72} strokeWidth={1} />
+                  <h3>Наведите камеру на билет</h3>
+                  <p>Подойдёт камера телефона или ноутбука</p>
+                  <button
+                    className="button primary"
+                    disabled={!event || busy}
+                    onClick={() => {
+                      setCamera(true);
+                      setResult(undefined);
+                      setSelection(undefined);
+                      setError("");
+                    }}
+                  >
+                    <Camera size={18} />
+                    Открыть камеру
+                  </button>
+                </>
+              )}
+            </div>
+            <div className="manual-divider">или введите код вручную</div>
+            <form
+              className="manual-scan"
+              onSubmit={(e) => {
+                e.preventDefault();
+                scan(code);
+              }}
+            >
+              <input
+                aria-label="Код или ссылка билета"
+                placeholder="Ссылка или полный код билета"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                required
+              />
+              <button
+                aria-label="Проверить билет"
+                className="button secondary"
+                disabled={busy || !event}
+              >
+                {busy ? <Spinner /> : <ArrowUpRight size={19} />}
+                <span>Проверить</span>
+              </button>
+            </form>
+          </>
+        )}
         <ErrorNotice text={error} />
       </section>
       <div className="checkin-side" ref={resultPanel} aria-live="polite">
-        {result ? (
+        {selection ? (
+          <div className="entry-selection">
+            <span className="micro">
+              Заказ на {selection.group.issued} гостей
+            </span>
+            <h2>{selection.name}</h2>
+            <p>{selection.phone}</p>
+            <p>
+              Вошли {selection.group.checked} из {selection.group.issued}.
+              Осталось {selection.group.remaining}.
+            </p>
+            {selection.group.remaining > 0 ? (
+              <>
+                <label htmlFor="entry-quantity">
+                  Сколько гостей заходит сейчас?
+                </label>
+                <select
+                  id="entry-quantity"
+                  value={quantity}
+                  disabled={busy}
+                  onChange={(e) => setQuantity(Number(e.target.value))}
+                >
+                  {Array.from({ length: selection.group.remaining }, (_, i) => (
+                    <option key={i + 1} value={i + 1}>
+                      {i + 1}
+                    </option>
+                  ))}
+                </select>
+                <p className="small-text muted">
+                  После подтверждения: {selection.group.checked + quantity} из{" "}
+                  {selection.group.issued}.
+                </p>
+                <button
+                  className="button primary full"
+                  disabled={busy}
+                  onClick={() => {
+                    void admitGroup();
+                  }}
+                >
+                  {busy ? <Spinner /> : <Check size={18} />}Подтвердить проход ·{" "}
+                  {quantity}
+                </button>
+              </>
+            ) : (
+              <h3>Все гости уже прошли</h3>
+            )}
+            <ErrorNotice text={error} />
+            <button
+              className="button secondary full"
+              disabled={busy}
+              onClick={() => {
+                void scan(selection.code, true);
+              }}
+            >
+              Обновить данные заказа
+            </button>
+            <button
+              className="text-button"
+              disabled={busy}
+              onClick={() => {
+                setSelection(undefined);
+                setError("");
+                scannerPanel.current?.scrollIntoView({ block: "start" });
+              }}
+            >
+              {entryMode === "search" ? "К поиску гостей" : "К сканеру"}
+            </button>
+          </div>
+        ) : result ? (
           <div
             className={
               "scan-result " + (result.accepted ? "accepted" : "rejected")
@@ -1460,7 +1633,14 @@ function Checkin({
             </span>
             <h2>{result.accepted ? "Добро пожаловать!" : "Уже использован"}</h2>
             <h3>{result.name}</h3>
-            <p>Билет № {result.ordinal}</p>
+            <p>
+              {result.admitted
+                ? `Отмечен проход: ${result.admitted}. Билеты № ${result.ordinals?.join(", ")}`
+                : `Билет № ${result.ordinal}`}
+            </p>
+            {result.replayed && (
+              <p>Этот проход уже был сохранён. Повторно гости не добавлены.</p>
+            )}
             {result.group && (
               <p>
                 По заказу вошли {result.group.checked} из {result.group.issued}.
@@ -1476,7 +1656,8 @@ function Checkin({
               onClick={() => {
                 setResult(undefined);
                 setCode("");
-                setCamera(true);
+                if (entryMode === "qr") setCamera(true);
+                else scannerPanel.current?.scrollIntoView({ block: "start" });
               }}
             >
               Следующий гость

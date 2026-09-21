@@ -818,3 +818,269 @@ test("live attendance counts exclude demo tickets and invalid orders", async (t)
     remaining: 0,
   });
 });
+
+test("door search matches Russian names and formatted phones without admitting anyone", async (t) => {
+  const h = await harness(t);
+  const order = await h.order({
+    ...guest,
+    first_name: "Семён",
+    last_name: "Петров",
+    phone: "+79787876854",
+    quantity: 5,
+  });
+  await h.store.markPaid(order.body.id);
+  const search = (query, extra = {}) =>
+    h.request("/checkin/search", {
+      method: "POST",
+      body: { event_id: "red-moon", query },
+      ...extra,
+    });
+  assert.equal((await search("Петров")).status, 401);
+  await h.login("door");
+  assert.equal(
+    (await search("Петров", { asOrigin: "https://evil.example" })).status,
+    403,
+  );
+  for (const query of [
+    "СЕМЕН",
+    "петров семён",
+    "сем петр",
+    "+7 (978) 787-68-54",
+    "8 (978) 787-68-54",
+    "9787876854",
+    "6854",
+  ]) {
+    const r = await search(query);
+    assert.equal(r.status, 200);
+    assert.equal(r.body.orders.length, 1, query);
+    const found = r.body.orders[0];
+    assert.equal(found.id, order.body.id);
+    assert.deepEqual(found.group, { issued: 5, checked: 0, remaining: 5 });
+    assert.equal(found.tickets.length, 5);
+    for (const field of [
+      "email",
+      "access_token",
+      "payment_url",
+      "webhook_token",
+      "total",
+    ])
+      assert.equal(field in found, false);
+  }
+  for (const query of ["", "я", "123", "%", "_", "a".repeat(121)])
+    assert.equal((await search(query)).status, 400);
+  for (const query of ["Петров%", "Петров_", "' OR 1=1 --"])
+    assert.equal((await search(query)).body.orders.length, 0);
+  assert.equal((await h.store.attendance("red-moon", true)).checked, 0);
+});
+
+test("search scopes to the selected event and valid live orders and limits broad results", async (t) => {
+  const h = await harness(t);
+  const r = await h.order({
+    ...guest,
+    first_name: "Мария",
+    last_name: "Тестовая",
+    quantity: 1,
+  });
+  await h.store.markPaid(r.body.id);
+  assert.equal(
+    (await h.store.searchTickets("red-moon", "Мария")).orders.length,
+    0,
+  );
+  await h.store.run("UPDATE orders SET mode='live' WHERE id=?", r.body.id);
+  assert.equal(
+    (await h.store.searchTickets("red-moon", "Мария")).orders.length,
+    1,
+  );
+  assert.equal(
+    (await h.store.searchTickets("another-event", "Мария")).orders.length,
+    0,
+  );
+  await h.store.run(
+    "UPDATE orders SET status='cancelled' WHERE id=?",
+    r.body.id,
+  );
+  assert.equal(
+    (await h.store.searchTickets("red-moon", "Мария")).orders.length,
+    0,
+  );
+  await h.store.run("UPDATE orders SET status='paid' WHERE id=?", r.body.id);
+  const original = await h.store.get(
+    "SELECT * FROM orders WHERE id=?",
+    r.body.id,
+  );
+  for (let i = 0; i < 22; i++) {
+    const copy = {
+      ...original,
+      id: randomUUID(),
+      access_token: randomUUID(),
+      idempotency: randomUUID(),
+    };
+    await h.store.run(
+      `INSERT INTO orders (${Object.keys(copy).join(",")}) VALUES (${Object.keys(
+        copy,
+      )
+        .map(() => "?")
+        .join(",")})`,
+      ...Object.values(copy),
+    );
+    await h.store.run(
+      "INSERT INTO tickets(id,code,order_id,ordinal) VALUES (?,?,?,1)",
+      randomUUID(),
+      randomUUID(),
+      copy.id,
+    );
+  }
+  const results = await h.store.searchTickets("red-moon", "Мария");
+  assert.equal(results.orders.length, 20);
+  assert.equal(results.more, true);
+});
+
+test("one group QR admits three then two guests; retries and stale confirmations cannot add extra guests", async (t) => {
+  const h = await harness(t);
+  const order = await h.order({ ...guest, quantity: 5 });
+  await h.store.markPaid(order.body.id);
+  const tickets = await h.store.all(
+    "SELECT * FROM tickets WHERE order_id=? ORDER BY ordinal",
+    order.body.id,
+  );
+  const code = tickets[4].code;
+  const preview = () =>
+    h.request("/checkin/preview", {
+      method: "POST",
+      body: {
+        code: origin + "/ticket/" + code + "?v=test",
+        event_id: "red-moon",
+      },
+    });
+  const requestId = randomUUID();
+  const admit = (quantity, expected_checked, request_id = requestId) =>
+    h.request("/checkin/group", {
+      method: "POST",
+      body: {
+        code,
+        event_id: "red-moon",
+        quantity,
+        expected_checked,
+        request_id,
+      },
+    });
+  assert.equal((await preview()).status, 401);
+  assert.equal((await admit(3, 0)).status, 401);
+  await h.login("door");
+  const before = await preview();
+  assert.equal(before.body.group.remaining, 5);
+  assert.equal((await h.store.attendance("red-moon", true)).checked, 0);
+  assert.equal((await admit(6, 0)).status, 409);
+  assert.equal((await admit(0, 0)).status, 400);
+  const first = await admit(3, 0);
+  assert.equal(first.status, 200);
+  assert.equal(first.body.admitted, 3);
+  assert.deepEqual(first.body.ordinals, [5, 1, 2]);
+  assert.deepEqual(first.body.group, { issued: 5, checked: 3, remaining: 2 });
+  const retry = await admit(3, 0);
+  assert.equal(retry.status, 200);
+  assert.equal(retry.body.replayed, true);
+  assert.equal(retry.body.group.checked, 3);
+  assert.equal((await admit(2, 0)).status, 409);
+  assert.equal((await admit(1, 0, randomUUID())).status, 409);
+  assert.equal((await preview()).body.group.remaining, 2);
+  const last = await admit(2, 3, randomUUID());
+  assert.equal(last.status, 200);
+  assert.equal(last.body.group.checked, 5);
+  assert.equal(last.body.group.remaining, 0);
+  assert.equal((await admit(1, 5, randomUUID())).status, 409);
+  assert.equal(
+    (
+      await h.store.get(
+        "SELECT COUNT(*) AS n FROM audit WHERE action='checkin'",
+      )
+    ).n,
+    5,
+  );
+  assert.equal(
+    (await h.store.get("SELECT COUNT(*) AS n FROM checkin_batches")).n,
+    2,
+  );
+});
+
+test("parallel group confirmations serialize and enforce remaining count and revision", async (t) => {
+  const h = await harness(t);
+  const order = await h.order({ ...guest, quantity: 5 });
+  await h.store.markPaid(order.body.id);
+  const code = (
+    await h.store.get(
+      "SELECT code FROM tickets WHERE order_id=? AND ordinal=1",
+      order.body.id,
+    )
+  ).code;
+  await h.login("door");
+  const body = {
+    code,
+    event_id: "red-moon",
+    quantity: 3,
+    expected_checked: 0,
+    request_id: randomUUID(),
+  };
+  const same = await Promise.all([
+    h.request("/checkin/group", { method: "POST", body }),
+    h.request("/checkin/group", { method: "POST", body }),
+  ]);
+  assert.deepEqual(
+    same.map((r) => r.status),
+    [200, 200],
+  );
+  assert.equal(same.filter((r) => r.body.replayed).length, 1);
+  const separate = await Promise.all(
+    [1, 2].map(() =>
+      h.request("/checkin/group", {
+        method: "POST",
+        body: {
+          ...body,
+          quantity: 1,
+          expected_checked: 3,
+          request_id: randomUUID(),
+        },
+      }),
+    ),
+  );
+  assert.deepEqual(separate.map((r) => r.status).sort(), [200, 409]);
+  assert.equal((await h.store.attendance("red-moon", true)).checked, 4);
+});
+
+test("group entry validates ticket mode, payment and selected event before changing attendance", async (t) => {
+  const h = await harness(t);
+  const order = await h.order({ ...guest, quantity: 2 });
+  await h.store.markPaid(order.body.id);
+  const code = (
+    await h.store.get(
+      "SELECT code FROM tickets WHERE order_id=?",
+      order.body.id,
+    )
+  ).code;
+  await assert.rejects(h.store.previewCheckin(code, "red-moon"), /Тестовый/);
+  await assert.rejects(
+    h.store.checkinGroup(code, "red-moon", 1, 0, randomUUID(), "door"),
+    /Тестовый/,
+  );
+  await h.store.run("UPDATE orders SET mode='live' WHERE id=?", order.body.id);
+  await assert.rejects(
+    h.store.checkinGroup(code, "wrong", 1, 0, randomUUID(), "door"),
+    /другое мероприятие/,
+  );
+  await h.store.run(
+    "UPDATE orders SET status='cancelled' WHERE id=?",
+    order.body.id,
+  );
+  await assert.rejects(
+    h.store.checkinGroup(code, "red-moon", 1, 0, randomUUID(), "door"),
+    /недействителен/,
+  );
+  assert.equal(
+    (
+      await h.store.get(
+        "SELECT COUNT(*) AS n FROM tickets WHERE used_at IS NOT NULL",
+      )
+    ).n,
+    0,
+  );
+});

@@ -1570,6 +1570,105 @@ td .diagnostic {
   background: #161618;
   border-radius: 8px;
 }
+.entry-mode {
+  display: flex;
+  gap: 8px;
+  margin: 18px 0;
+}
+.entry-mode button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 46px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+}
+.entry-mode button[aria-pressed="true"] {
+  color: #fff;
+  border-color: #e05946;
+  background: #ad382522;
+}
+.guest-search label,
+.entry-selection label {
+  display: block;
+  font-size: 12px;
+  margin: 16px 0 10px;
+}
+.guest-search-form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.guest-search-form input {
+  min-width: 0;
+  font-size: 13px;
+}
+.guest-search-form .button {
+  padding: 0 14px;
+  min-height: 46px;
+  font-size: 12px;
+}
+.guest-search-results > p {
+  font-size: 13px;
+  line-height: 1.6;
+  margin-top: 18px;
+}
+.guest-search-order {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+.guest-search-order h3 {
+  font-size: 17px;
+}
+.guest-search-order p,
+.entry-selection p {
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 10px 0;
+}
+.guest-ticket-statuses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0;
+}
+.guest-ticket-statuses span {
+  padding: 5px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  background: #ffffff0a;
+}
+.guest-ticket-statuses .used {
+  color: #9cb9a6;
+}
+.entry-selection h2 {
+  font-size: 25px;
+  overflow-wrap: anywhere;
+  margin-top: 18px;
+}
+.entry-selection select {
+  font-size: 18px;
+}
+.entry-selection .button {
+  margin-top: 12px;
+}
+.entry-selection .text-button {
+  margin-top: 18px;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
 .scanner-card > label {
   display: block;
   font-size: 10px;
