@@ -100,7 +100,7 @@
   width: 100px;
 }
 .real-ticket .partner-logo {
-  width: 80px;
+  width: 104px;
 }
 .real-ticket .partner-cross {
   font-size: 12px;
@@ -380,10 +380,10 @@
     gap: 9px;
   }
   .real-ticket .ticket-top .brand {
-    width: 96px;
+    width: 84px;
   }
   .real-ticket .partner-logo {
-    width: 70px;
+    width: 88px;
   }
   .real-ticket h2 {
     font-size: 38px;

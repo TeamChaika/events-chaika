@@ -14,6 +14,20 @@ export function Brand() {
     </a>
   );
 }
+export function EventPartners() {
+  return (
+    <div className="event-partners">
+      <Brand />
+      <img
+        className="partner-logo"
+        src="/assets/sunset-vibes.png"
+        alt="Sunset Vibes — партнёр вечеринки"
+        width="1072"
+        height="366"
+      />
+    </div>
+  );
+}
 export function ContactPhone() {
   return (
     <a className="contact-phone" href="tel:+79787873000">

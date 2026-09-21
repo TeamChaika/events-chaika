@@ -2221,7 +2221,7 @@ td .diagnostic {
     width: 98px;
   }
   .venue-brands .partner-logo {
-    width: 78px;
+    width: 102px;
   }
   .venue-logo {
     width: 72px;
@@ -3045,7 +3045,7 @@ td .diagnostic {
   gap: 12px;
 }
 .event-partners .brand {
-  width: 170px;
+  width: 112px;
 }
 .partner-cross {
   color: #9b7770;
@@ -3055,7 +3055,7 @@ td .diagnostic {
 }
 .partner-logo {
   display: block;
-  width: 122px;
+  width: 116px;
   height: auto;
   flex-shrink: 0;
 }

@@ -30,6 +30,7 @@ import {
 } from "./types";
 import {
   Brand,
+  EventPartners,
   ContactPhone,
   ErrorNotice,
   Spinner,
@@ -289,7 +290,7 @@ function EventLanding({
               </span>
             </div>
             <div className="venue-brands">
-              <Brand />
+              {event.id === "red-moon" ? <EventPartners /> : <Brand />}
             </div>
             <a
               className="event-location"

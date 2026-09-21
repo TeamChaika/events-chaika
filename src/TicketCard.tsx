@@ -1,5 +1,5 @@
 import { ArrowUpRight, MapPin } from "lucide-react";
-import { Brand, ContactPhone } from "./ui";
+import { Brand, EventPartners, ContactPhone } from "./ui";
 import { dateLabel, type EventData, type TicketData } from "./types";
 
 export function TicketCard({
@@ -29,7 +29,7 @@ export function TicketCard({
           <div className="ticket-grid" />
         </div>
         <div className="ticket-top">
-          <Brand />
+          {redMoon ? <EventPartners /> : <Brand />}
           <span className="ticket-age">{event.age}+</span>
         </div>
         <div className="ticket-edition">
