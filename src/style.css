@@ -3098,6 +3098,170 @@ td .diagnostic {
 .mobile-buy-bar[hidden] {
   display: none;
 }
+
+/* Let large monitors use the full stage. Height also limits the scale so
+   ultrawide screens keep the purchase action within the first viewport. */
+@media screen and (min-width: 1600px) and (min-height: 801px) {
+  .public-app {
+    --poster-unit: clamp(1px, min(0.0625vw, 0.0926svh), 2.5px);
+  }
+  .hero {
+    max-width: none;
+    min-height: calc(100svh - 120 * var(--poster-unit));
+    display: flex;
+    align-items: center;
+  }
+  .hero-art {
+    inset: 0 0 calc(-20 * var(--poster-unit)) auto;
+    width: min(100%, calc(1680 * var(--poster-unit)));
+    --scene-position: 65% 10%;
+  }
+  .hero-copy {
+    margin-left: 6%;
+    width: 48%;
+    padding-block: calc(32 * var(--poster-unit));
+  }
+  .hero .eyebrow {
+    gap: calc(10 * var(--poster-unit));
+    font-size: calc(11 * var(--poster-unit));
+    letter-spacing: calc(1.8 * var(--poster-unit));
+  }
+  .hero .age-label {
+    font-size: calc(10 * var(--poster-unit));
+    padding: calc(3 * var(--poster-unit)) calc(6 * var(--poster-unit));
+  }
+  .hero h1 {
+    max-width: none;
+    margin-top: calc(22 * var(--poster-unit));
+    font-size: calc(134 * var(--poster-unit));
+    letter-spacing: -0.036em;
+    line-height: 1.02;
+  }
+  .hero-custom h1 {
+    font-size: calc(82 * var(--poster-unit));
+  }
+  .hero-description {
+    margin-top: calc(20 * var(--poster-unit));
+    font-size: calc(14 * var(--poster-unit));
+    line-height: 1.65;
+  }
+  .hero .event-meta {
+    margin-top: calc(20 * var(--poster-unit));
+    gap: calc(14 * var(--poster-unit));
+    font-size: calc(13 * var(--poster-unit));
+  }
+  .hero .event-meta svg,
+  .hero .event-location > svg,
+  .hero .contact-phone svg {
+    width: calc(18 * var(--poster-unit));
+    height: calc(18 * var(--poster-unit));
+  }
+  .hero .venue-brands {
+    margin-top: calc(18 * var(--poster-unit));
+  }
+  .hero .event-partners {
+    gap: calc(20 * var(--poster-unit));
+  }
+  .hero .venue-brands .brand {
+    width: calc(124 * var(--poster-unit));
+  }
+  .hero .partner-logo {
+    width: calc(128 * var(--poster-unit));
+  }
+  .hero .partner-cross {
+    font-size: calc(16 * var(--poster-unit));
+  }
+  .hero .event-location {
+    margin-top: calc(12 * var(--poster-unit));
+    gap: calc(12 * var(--poster-unit));
+  }
+  .hero .location-copy {
+    font-size: calc(12 * var(--poster-unit));
+    gap: calc(3 * var(--poster-unit));
+  }
+  .hero .location-copy strong,
+  .hero .contact-phone {
+    font-size: calc(14 * var(--poster-unit));
+  }
+  .hero .contact-phone {
+    min-height: calc(42 * var(--poster-unit));
+    gap: calc(12 * var(--poster-unit));
+  }
+  .hero-actions {
+    margin-top: calc(20 * var(--poster-unit));
+    gap: calc(25 * var(--poster-unit));
+  }
+  .hero .ticket-cta {
+    min-width: calc(250 * var(--poster-unit));
+    min-height: calc(56 * var(--poster-unit));
+    padding-inline: calc(22 * var(--poster-unit));
+    gap: calc(12 * var(--poster-unit));
+    font-size: calc(14 * var(--poster-unit));
+  }
+  .hero .ticket-cta svg {
+    width: calc(21 * var(--poster-unit));
+    height: calc(21 * var(--poster-unit));
+  }
+  .hero-price strong {
+    font-size: calc(24 * var(--poster-unit));
+  }
+  .hero-price > span {
+    font-size: calc(11 * var(--poster-unit));
+  }
+  .hero-countdown {
+    bottom: calc(32 * var(--poster-unit));
+    padding: calc(18 * var(--poster-unit)) calc(22 * var(--poster-unit));
+  }
+  .hero .countdown > .micro {
+    font-size: calc(10 * var(--poster-unit));
+    margin-bottom: calc(14 * var(--poster-unit));
+  }
+  .hero .countdown > div {
+    gap: calc(11 * var(--poster-unit));
+  }
+  .hero .count-unit {
+    min-width: calc(35 * var(--poster-unit));
+  }
+  .hero .count-unit b {
+    font-size: calc(42 * var(--poster-unit));
+  }
+  .hero .count-unit small {
+    font-size: calc(9 * var(--poster-unit));
+    margin-top: calc(8 * var(--poster-unit));
+  }
+  .hero .count-colon {
+    font-size: calc(24 * var(--poster-unit));
+  }
+  .hero-side-label {
+    left: 2%;
+    font-size: calc(9 * var(--poster-unit));
+  }
+  .public-app .marquee {
+    height: calc(47 * var(--poster-unit));
+  }
+  .public-app .marquee span {
+    font-size: calc(11 * var(--poster-unit));
+    gap: calc(32 * var(--poster-unit));
+  }
+  .public-app .public-footer {
+    max-width: none;
+    padding: calc(24 * var(--poster-unit)) 6%;
+    gap: calc(28 * var(--poster-unit));
+  }
+  .public-app .public-footer > span,
+  .public-app .public-footer > small,
+  .public-app .public-footer .legal-links a {
+    font-size: calc(11 * var(--poster-unit));
+  }
+  .public-app .cookie-notice {
+    max-width: none;
+    margin-inline: 6%;
+  }
+  .public-app .cookie-notice p,
+  .public-app .cookie-notice .button {
+    font-size: calc(12 * var(--poster-unit));
+  }
+}
 @media screen and (max-width: 800px),
   screen and (max-width: 950px) and (max-height: 500px) {
   .public-app {
