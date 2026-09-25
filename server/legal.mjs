@@ -30,7 +30,7 @@ const definitions = [
 export const currentLegalDocuments = definitions.map(
   ([slug, file, title, acceptance_label]) => ({
     slug,
-    version: "2026-09-26.1",
+    version: slug === "terms" ? "2026-09-26.2" : "2026-09-26.1",
     status: "published",
     title,
     acceptance_label,
