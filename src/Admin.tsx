@@ -19,9 +19,12 @@ import {
   Banknote,
   CircleDollarSign,
   Send,
+  FileCheck2,
 } from "lucide-react";
 import { Brand, ErrorNotice, Spinner, Modal, GuestFields } from "./ui";
 import { GuestSearch } from "./GuestSearch";
+import { AcceptanceHistory } from "./Legal";
+import { OrderManagement } from "./OrderManagement";
 import {
   api,
   money,
@@ -47,6 +50,9 @@ type AdminOrder = {
   title: string;
   access_token: string;
   diagnostic: string | null;
+  is_test: number;
+  voided_at: string | null;
+  void_reason: string | null;
 };
 type Delivery = {
   id: string;
@@ -81,6 +87,9 @@ export function Admin() {
     [busy, setBusy] = useState(false),
     [edit, setEdit] = useState<EventData | "new" | null>(null),
     [issue, setIssue] = useState(false),
+    [acceptanceOrder, setAcceptanceOrder] = useState<AdminOrder | null>(null),
+    [managedOrder, setManagedOrder] = useState<AdminOrder | null>(null),
+    [showArchived, setShowArchived] = useState(false),
     [search, setSearch] = useState("");
   async function load() {
     try {
@@ -89,6 +98,14 @@ export function Admin() {
       setError((e as Error).message);
     }
   }
+  const visibleOrders = (data?.orders || []).filter(
+    (o) =>
+      (showArchived ||
+        (!o.is_test && !o.voided_at && (demo || o.mode === "live"))) &&
+      `${o.first_name} ${o.last_name} ${o.phone} ${o.email}`
+        .toLowerCase()
+        .includes(search.toLowerCase()),
+  );
   useEffect(() => {
     api<{ role: string | null; demo: boolean }>("/auth")
       .then((a) => {
@@ -424,6 +441,14 @@ export function Admin() {
                       Обновить
                     </button>
                   </div>
+                  <label className="checkbox-label order-archive-filter">
+                    <input
+                      type="checkbox"
+                      checked={showArchived}
+                      onChange={(e) => setShowArchived(e.target.checked)}
+                    />
+                    <span>Показать тестовые и аннулированные заказы</span>
+                  </label>
                   <div className="table-scroll">
                     <table>
                       <thead>
@@ -438,91 +463,114 @@ export function Admin() {
                         </tr>
                       </thead>
                       <tbody>
-                        {data.orders
-                          .filter((o) =>
-                            `${o.first_name} ${o.last_name} ${o.phone} ${o.email}`
-                              .toLowerCase()
-                              .includes(search.toLowerCase()),
-                          )
-                          .map((o) => (
-                            <tr key={o.id}>
-                              <td>
-                                <strong>
-                                  {o.first_name} {o.last_name}
-                                </strong>
-                                <small>{o.phone}</small>
-                                <small>{o.email}</small>
-                              </td>
-                              <td>
-                                {o.title}
+                        {visibleOrders.map((o) => (
+                          <tr key={o.id}>
+                            <td>
+                              <strong>
+                                {o.first_name} {o.last_name}
+                              </strong>
+                              <small>{o.phone}</small>
+                              <small>{o.email}</small>
+                            </td>
+                            <td>
+                              {o.title}
+                              <small>
+                                {new Date(o.created_at).toLocaleString("ru-RU")}
+                              </small>
+                            </td>
+                            <td>
+                              {o.quantity}
+                              {o.status === "paid" && (
                                 <small>
-                                  {new Date(o.created_at).toLocaleString(
-                                    "ru-RU",
-                                  )}
+                                  Вошли {o.checked_count} из {o.quantity}
                                 </small>
-                              </td>
-                              <td>
-                                {o.quantity}
-                                {o.status === "paid" && (
-                                  <small>
-                                    Вошли {o.checked_count} из {o.quantity}
-                                  </small>
+                              )}
+                            </td>
+                            <td>
+                              {money(o.total)}
+                              {(o.mode !== "live" || Boolean(o.is_test)) && (
+                                <small>Тестовый заказ</small>
+                              )}
+                            </td>
+                            <td>{methodLabel[o.method]}</td>
+                            <td>
+                              <span className={"status-pill " + o.status}>
+                                {statusLabel[o.status]}
+                              </span>
+                              {o.voided_at && (
+                                <small>Проходы аннулированы</small>
+                              )}
+                              {o.diagnostic && (
+                                <small className="diagnostic">
+                                  {o.diagnostic}
+                                </small>
+                              )}
+                            </td>
+                            <td>
+                              <a
+                                href={"/order/" + o.access_token}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="icon-button"
+                                aria-label="Открыть заказ"
+                              >
+                                <ArrowUpRight size={19} />
+                              </a>
+                              <button
+                                className="icon-button"
+                                aria-label={`Подтверждения ${o.first_name} ${o.last_name}`}
+                                title="Принятые документы"
+                                onClick={() => setAcceptanceOrder(o)}
+                              >
+                                <FileCheck2 size={18} />
+                              </button>
+                              <button
+                                className="icon-button"
+                                aria-label={`Управление заказом ${o.first_name} ${o.last_name}`}
+                                title="Тестовый заказ и аннулирование"
+                                onClick={() => setManagedOrder(o)}
+                              >
+                                <Settings2 size={18} />
+                              </button>
+                              {!["paid", "paid_review"].includes(o.status) &&
+                                o.mode !== "demo" && (
+                                  <button
+                                    className="icon-button"
+                                    aria-label="Перепроверить оплату"
+                                    onClick={async () => {
+                                      try {
+                                        await api(
+                                          "/admin/orders/" + o.id + "/recheck",
+                                          { method: "POST", body: "{}" },
+                                        );
+                                        load();
+                                      } catch (e) {
+                                        setError((e as Error).message);
+                                      }
+                                    }}
+                                  >
+                                    <RefreshCw size={16} />
+                                  </button>
                                 )}
-                              </td>
-                              <td>
-                                {money(o.total)}
-                                {o.mode !== "live" && (
-                                  <small>Тестовый заказ</small>
-                                )}
-                              </td>
-                              <td>{methodLabel[o.method]}</td>
-                              <td>
-                                <span className={"status-pill " + o.status}>
-                                  {statusLabel[o.status]}
-                                </span>
-                                {o.diagnostic && (
-                                  <small className="diagnostic">
-                                    {o.diagnostic}
-                                  </small>
-                                )}
-                              </td>
-                              <td>
-                                <a
-                                  href={"/order/" + o.access_token}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="icon-button"
-                                  aria-label="Открыть заказ"
-                                >
-                                  <ArrowUpRight size={19} />
-                                </a>
-                                {!["paid", "paid_review"].includes(o.status) &&
-                                  o.mode !== "demo" && (
-                                    <button
-                                      className="icon-button"
-                                      aria-label="Перепроверить оплату"
-                                      onClick={async () => {
-                                        try {
-                                          await api(
-                                            "/admin/orders/" +
-                                              o.id +
-                                              "/recheck",
-                                            { method: "POST", body: "{}" },
-                                          );
-                                          load();
-                                        } catch (e) {
-                                          setError((e as Error).message);
-                                        }
-                                      }}
-                                    >
-                                      <RefreshCw size={16} />
-                                    </button>
-                                  )}
-                              </td>
-                            </tr>
-                          ))}
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
+                    {data.orders.length > 0 && !visibleOrders.length && (
+                      <div className="empty-state">
+                        <p>Нет заказов с выбранными фильтрами.</p>
+                        <button
+                          className="text-link"
+                          onClick={() => {
+                            setShowArchived(true);
+                            setSearch("");
+                          }}
+                        >
+                          Сбросить фильтры
+                        </button>
+                      </div>
+                    )}
                     {!data.orders.length && (
                       <div className="empty-state">
                         <Ticket size={34} />
@@ -778,6 +826,27 @@ export function Admin() {
           )}
         </main>
       </div>
+      {acceptanceOrder && (
+        <Modal
+          title="Принятые документы"
+          close={() => setAcceptanceOrder(null)}
+        >
+          <p className="legal-copy">
+            {acceptanceOrder.first_name} {acceptanceOrder.last_name}
+          </p>
+          <AcceptanceHistory orderId={acceptanceOrder.id} />
+        </Modal>
+      )}
+      {managedOrder && (
+        <OrderManagement
+          order={managedOrder}
+          close={() => setManagedOrder(null)}
+          saved={() => {
+            setManagedOrder(null);
+            void load();
+          }}
+        />
+      )}
       {edit && (
         <EventEditor
           event={edit}
@@ -806,15 +875,15 @@ function Stats({ data }: { data: Overview }) {
       {[
         [
           Ticket,
-          "Выпущено билетов",
+          "Учтено гостей",
           data.stats.sold,
-          "Гостей с действующим QR",
+          "Ожидаем и уже приняли, без тестов",
         ],
         [
           CircleDollarSign,
           "Продажи",
           money(data.stats.revenue),
-          "СБП и наличные",
+          "Оплаты, включая тесты; без учёта возвратов",
         ],
         [
           Users,

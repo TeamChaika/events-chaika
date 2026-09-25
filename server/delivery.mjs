@@ -121,7 +121,13 @@ export async function processOutbox(store, origin, demo) {
   );
   for (const job of jobs) {
     let o = await store.get("SELECT * FROM orders WHERE id=?", job.order_id);
-    if (demo || o.mode !== "live" || !channelReady(job.channel)) {
+    if (
+      demo ||
+      o.mode !== "live" ||
+      o.is_test ||
+      o.voided_at ||
+      !channelReady(job.channel)
+    ) {
       await store.run(
         "UPDATE outbox SET status='disabled',error='Отправка не подключена или заказ тестовый' WHERE id=?",
         job.id,
@@ -160,6 +166,13 @@ export async function processOutbox(store, origin, demo) {
     if (!claimed.changes) continue;
     try {
       o = await store.get("SELECT * FROM orders WHERE id=?", job.order_id);
+      if (o.is_test || o.voided_at) {
+        await store.run(
+          "UPDATE outbox SET status='disabled',error='Заказ аннулирован или отмечен как тестовый' WHERE id=?",
+          job.id,
+        );
+        continue;
+      }
       const delivery = await deliver(
         job,
         o,

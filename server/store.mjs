@@ -38,6 +38,18 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
       kind TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0,
       next_at INTEGER NOT NULL DEFAULT 0, sent_at TEXT, error TEXT, UNIQUE(order_id,channel,kind));
     CREATE TABLE IF NOT EXISTS audit (id TEXT PRIMARY KEY, action TEXT NOT NULL, entity TEXT NOT NULL, actor TEXT NOT NULL, created_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS legal_documents (
+      hash TEXT PRIMARY KEY, slug TEXT NOT NULL, version TEXT NOT NULL, status TEXT NOT NULL,
+      title TEXT NOT NULL, acceptance_label TEXT NOT NULL, content TEXT NOT NULL, UNIQUE(slug,version));
+    CREATE TABLE IF NOT EXISTS order_acceptances (
+      order_id TEXT NOT NULL REFERENCES orders(id), kind TEXT NOT NULL CHECK(kind IN ('terms','consent')),
+      document_hash TEXT NOT NULL REFERENCES legal_documents(hash), accepted_at TEXT NOT NULL,
+      buyer_session TEXT NOT NULL, PRIMARY KEY(order_id,kind));
+    CREATE TABLE IF NOT EXISTS sms_consents (
+      order_id TEXT PRIMARY KEY REFERENCES orders(id), phone TEXT NOT NULL,
+      document_hash TEXT NOT NULL REFERENCES legal_documents(hash), accepted_at TEXT NOT NULL,
+      buyer_session TEXT NOT NULL, unsubscribe_token TEXT NOT NULL UNIQUE, withdrawn_at TEXT);
+    CREATE INDEX IF NOT EXISTS sms_consents_phone ON sms_consents(phone,withdrawn_at);
     CREATE INDEX IF NOT EXISTS orders_event ON orders(event_id,status);
     CREATE INDEX IF NOT EXISTS tickets_order ON tickets(order_id);`;
   try {
@@ -75,6 +87,9 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
             "outbox",
             "audit",
             "media",
+            "legal_documents",
+            "order_acceptances",
+            "sms_consents",
           ]) {
             await db.exec(`ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY; ALTER TABLE ${table} FORCE ROW LEVEL SECURITY;
               DROP POLICY IF EXISTS events_backend ON ${table};
@@ -95,6 +110,22 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
         ["provider_status", "INTEGER"],
         ["status_attempts", "INTEGER NOT NULL DEFAULT 0"],
       ];
+      const orderColumns = [
+        ["is_test", "INTEGER NOT NULL DEFAULT 0"],
+        ["voided_at", "TEXT"],
+        ["void_reason", "TEXT"],
+      ];
+      const existingOrders =
+        db.kind === "sqlite" ? await db.all("PRAGMA table_info(orders)") : [];
+      for (const [name, type] of orderColumns) {
+        if (
+          db.kind === "postgres" ||
+          !existingOrders.some((column) => column.name === name)
+        )
+          await db.exec(
+            `ALTER TABLE orders ADD COLUMN ${db.kind === "postgres" ? "IF NOT EXISTS " : ""}${name} ${type}`,
+          );
+      }
       const existing =
         db.kind === "sqlite" ? await db.all("PRAGMA table_info(outbox)") : [];
       for (const [name, type] of deliveryColumns) {
@@ -124,7 +155,7 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
   const reserved = async (id) =>
     (
       await get(
-        "SELECT COALESCE(SUM(quantity),0) AS count FROM orders WHERE event_id=? AND status IN ('creating','pending','unknown','paid')",
+        "SELECT COALESCE(SUM(CASE WHEN o.voided_at IS NULL THEN o.quantity ELSE (SELECT COUNT(*) FROM tickets t WHERE t.order_id=o.id AND t.used_at IS NOT NULL) END),0) AS count FROM orders o WHERE o.event_id=? AND o.status IN ('creating','pending','unknown','paid')",
         id,
       )
     ).count;
@@ -150,6 +181,7 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
     const o = await get("SELECT * FROM orders WHERE id=?", id);
     if (!o || o.status !== "paid")
       throw new AppError(409, "Заказ ещё не оплачен");
+    if (o.voided_at) return;
     for (let i = 1; i <= o.quantity; i++)
       await run(
         "INSERT OR IGNORE INTO tickets(id,code,order_id,ordinal) VALUES (?,?,?,?)",
@@ -164,6 +196,15 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
     await transaction(async () => {
       const o = await get("SELECT * FROM orders WHERE id=?", id);
       if (!o) throw new AppError(404, "Заказ не найден");
+      if (o.voided_at) {
+        // A duplicate/late bank confirmation must never restore voided tickets.
+        await run(
+          "UPDATE orders SET status='paid',paid_at=COALESCE(paid_at,?) WHERE id=?",
+          new Date().toISOString(),
+          id,
+        );
+        return;
+      }
       // A late confirmed payment needs operator reconciliation when its seats were released.
       if (
         ["expired", "cancelled", "failed"].includes(o.status) &&
@@ -187,7 +228,7 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
     });
   const attendance = async (eventId, allowTest = false) => {
     const counts = await get(
-      "SELECT COUNT(*) AS issued,COALESCE(SUM(CASE WHEN t.used_at IS NOT NULL THEN 1 ELSE 0 END),0) AS checked FROM tickets t JOIN orders o ON o.id=t.order_id WHERE o.event_id=? AND o.status='paid' AND (?=1 OR o.mode='live')",
+      "SELECT COUNT(*) AS issued,COALESCE(SUM(CASE WHEN t.used_at IS NOT NULL THEN 1 ELSE 0 END),0) AS checked FROM tickets t JOIN orders o ON o.id=t.order_id WHERE o.event_id=? AND o.status='paid' AND o.is_test=0 AND (o.voided_at IS NULL OR t.used_at IS NOT NULL) AND (?=1 OR o.mode='live')",
       eventId,
       allowTest ? 1 : 0,
     );
@@ -223,7 +264,7 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
       (part) => "%" + part.replace(/[!%_]/g, (c) => "!" + c) + "%",
     );
     const orders = await all(
-      `SELECT o.id,o.first_name,o.last_name,o.phone,o.method,o.mode FROM orders o WHERE o.event_id=? AND o.status='paid' AND (?=1 OR o.mode='live') AND EXISTS (SELECT 1 FROM tickets t WHERE t.order_id=o.id) AND ${parts.map(() => `${column} LIKE ? ESCAPE '!'`).join(" AND ")} ORDER BY o.created_at DESC,o.id LIMIT 21`,
+      `SELECT o.id,o.first_name,o.last_name,o.phone,o.method,o.mode FROM orders o WHERE o.event_id=? AND o.status='paid' AND o.voided_at IS NULL AND o.is_test=0 AND (?=1 OR o.mode='live') AND EXISTS (SELECT 1 FROM tickets t WHERE t.order_id=o.id) AND ${parts.map(() => `${column} LIKE ? ESCAPE '!'`).join(" AND ")} ORDER BY o.created_at DESC,o.id LIMIT 21`,
       eventId,
       allowTest ? 1 : 0,
       ...patterns,
@@ -258,11 +299,13 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
   };
   const ticketForCheckin = async (code, eventId, allowTest) => {
     const t = await get(
-      `SELECT t.*,o.event_id,o.status,o.mode,o.first_name,o.last_name,o.phone,o.method,e.title FROM tickets t JOIN orders o ON o.id=t.order_id JOIN events e ON e.id=o.event_id WHERE t.code=?`,
+      `SELECT t.*,o.event_id,o.status,o.mode,o.is_test,o.voided_at,o.first_name,o.last_name,o.phone,o.method,e.title FROM tickets t JOIN orders o ON o.id=t.order_id JOIN events e ON e.id=o.event_id WHERE t.code=?`,
       code,
     );
     if (!t) throw new AppError(404, "Билет не найден");
-    if (!allowTest && t.mode !== "live")
+    if (t.voided_at)
+      throw new AppError(409, "Билет аннулирован. Проход запрещён");
+    if (t.is_test || (!allowTest && t.mode !== "live"))
       throw new AppError(409, "Тестовый билет не даёт права прохода");
     if (t.event_id !== eventId)
       throw new AppError(409, "Билет на другое мероприятие");
@@ -386,6 +429,47 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
         group: await orderAttendance(t.order_id),
       };
     });
+  const manageOrder = async (id, { action, reason, isTest }, actor) =>
+    transaction(async () => {
+      const order = await get("SELECT * FROM orders WHERE id=?", id);
+      if (!order) throw new AppError(404, "Заказ не найден");
+      if (action === "void") {
+        if (order.voided_at) return order;
+        if (["creating", "pending", "unknown"].includes(order.status))
+          throw new AppError(
+            409,
+            "Сначала дождитесь результата оплаты или перепроверьте её. Заказ ещё обрабатывается",
+          );
+        await run(
+          "UPDATE orders SET voided_at=?,void_reason=? WHERE id=?",
+          new Date().toISOString(),
+          reason,
+          id,
+        );
+      } else {
+        if (Boolean(order.is_test) === isTest) return order;
+        await run("UPDATE orders SET is_test=? WHERE id=?", isTest ? 1 : 0, id);
+      }
+      await audit(
+        JSON.stringify({
+          action:
+            action === "void"
+              ? "tickets_voided"
+              : isTest
+                ? "test_marked"
+                : "test_unmarked",
+          reason,
+        }),
+        id,
+        actor,
+      );
+      if (action === "void" || isTest)
+        await run(
+          "UPDATE outbox SET status='disabled',error='Заказ аннулирован или отмечен как тестовый' WHERE order_id=? AND status IN ('pending','retry')",
+          id,
+        );
+      return get("SELECT * FROM orders WHERE id=?", id);
+    });
   return {
     db,
     get,
@@ -402,6 +486,7 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
     searchTickets,
     previewCheckin,
     checkinGroup,
+    manageOrder,
   };
 }
 

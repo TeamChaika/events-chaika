@@ -134,7 +134,7 @@ export function GuestFields() {
           required
           maxLength={160}
         />
-        <small>Сюда отправим ваши билеты</small>
+        <small>Для связи по заказу</small>
       </label>
     </>
   );

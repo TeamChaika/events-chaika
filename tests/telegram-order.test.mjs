@@ -31,6 +31,37 @@ async function fixture(t) {
   return s;
 }
 const run = (s) => processOutbox(s, "https://example.com", false);
+test("annulled and explicitly marked test orders are not delivered even after a retry is queued", async (t) => {
+  const s = await fixture(t);
+  let sends = 0;
+  t.mock.method(telegram, "send", async () => {
+    sends++;
+    return { status: "sent", providerId: "42" };
+  });
+  await s.run("UPDATE orders SET status='paid' WHERE id='fixture'");
+  await s.manageOrder(
+    "fixture",
+    { action: "test", isTest: true, reason: "fixture" },
+    "admin",
+  );
+  await s.run("UPDATE outbox SET status='retry'");
+  await run(s);
+  assert.equal(sends, 0);
+  await s.manageOrder(
+    "fixture",
+    { action: "test", isTest: false, reason: "fixture" },
+    "admin",
+  );
+  await s.manageOrder(
+    "fixture",
+    { action: "void", reason: "fixture" },
+    "admin",
+  );
+  await s.run("UPDATE outbox SET status='retry'");
+  await run(s);
+  assert.equal(sends, 0);
+  assert.equal((await s.get("SELECT status FROM outbox")).status, "disabled");
+});
 test("one Telegram message is edited after payment and confirmed SMS delivery", async (t) => {
   const s = await fixture(t);
   const sent = [],

@@ -17,6 +17,8 @@ import {
 import { channelReady, processOutbox } from "./delivery.mjs";
 import { checkSmsAero } from "./smsaero.mjs";
 import { telegram } from "./telegram.mjs";
+import { legalService } from "./legal.mjs";
+import { marketingService } from "./marketing.mjs";
 
 const hash = (s) => createHash("sha256").update(s).digest("hex");
 const same = (a, b) =>
@@ -87,6 +89,7 @@ export async function createApp({
   demo = process.env.DEMO_MODE === "true",
   origin = process.env.APP_ORIGIN || "http://localhost:5173",
   testing = false,
+  legalDocuments,
   mediaDir = resolve(dirname(dbPath), "media"),
 } = {}) {
   const production = process.env.NODE_ENV === "production";
@@ -106,6 +109,14 @@ export async function createApp({
   if (process.env.REQUIRE_POSTGRES === "true" && !databaseUrl)
     throw new Error("DATABASE_URL is required on ephemeral hosting");
   const store = await openStore(dbPath, databaseUrl);
+  const marketing = marketingService(store);
+  let legal;
+  try {
+    legal = await legalService(store, { demo, documents: legalDocuments });
+  } catch (error) {
+    await store.db.close();
+    throw error;
+  }
   await store.transaction(() => seed(store));
   // A rolling deploy may overlap a healthy instance. Recover only expired leases.
   const recover = async () => {
@@ -252,6 +263,18 @@ export async function createApp({
       ),
     ),
   );
+  app.get("/api/legal", (_req, res) => res.json(legal.summary()));
+  app.get("/api/marketing/:token", async (req, res) => {
+    res.json(await marketing.status(req.params.token));
+  });
+  app.post("/api/marketing/:token/unsubscribe", async (req, res) => {
+    res.json(await marketing.withdraw(req.params.token));
+  });
+  app.get("/api/legal/:slug", async (req, res) => {
+    if (req.query.hash !== undefined && typeof req.query.hash !== "string")
+      throw new AppError(400, "Неверная версия документа");
+    res.json(await legal.document(req.params.slug, req.query.hash));
+  });
   app.get("/api/auth", (_req, res) =>
     res.json({ role: _req.staff?.role || null, demo }),
   );
@@ -299,6 +322,8 @@ export async function createApp({
       unit_price: o.unit_price,
       total: o.total,
       status: o.status,
+      voided_at: o.voided_at,
+      is_test: Boolean(o.is_test),
       method: o.method,
       mode: o.mode,
       created_at: o.created_at,
@@ -308,7 +333,7 @@ export async function createApp({
         ? await QRCode.toDataURL(o.qr_url, { width: 320, margin: 3 })
         : null,
       tickets: await Promise.all(
-        tickets.map(async (t) => ({
+        (o.voided_at || o.is_test ? [] : tickets).map(async (t) => ({
           ...t,
           qr_image: await QRCode.toDataURL(`${origin}/ticket/${t.code}`, {
             width: 320,
@@ -320,12 +345,11 @@ export async function createApp({
         "SELECT channel,status FROM outbox WHERE order_id=? AND kind='tickets'",
         o.id,
       ),
+      unsubscribe_url: await marketing.linkForOrder(o.id),
     };
   };
   app.post("/api/orders", orderLimit, async (req, res) => {
     const input = customerSchema.parse(req.body);
-    if (req.body.consent !== true)
-      throw new AppError(400, "Необходимо согласие на обработку данных");
     if (!availability())
       throw new AppError(
         503,
@@ -335,7 +359,30 @@ export async function createApp({
     if (!buyer || !/^[a-f0-9]{48}$/.test(buyer))
       throw new AppError(400, "Обновите страницу перед покупкой");
     const key = z.uuid().parse(req.headers["idempotency-key"]);
-    const requestHash = hash(JSON.stringify(input));
+    const acceptanceInput = Object.fromEntries(
+      ["terms", "consent"].map((kind) => [
+        kind,
+        {
+          accepted: req.body.acceptances?.[kind]?.accepted === true,
+          hash:
+            typeof req.body.acceptances?.[kind]?.hash === "string"
+              ? req.body.acceptances[kind].hash
+              : null,
+        },
+      ]),
+    );
+    // Omitted/unchecked marketing never opts in and preserves old retry hashes.
+    if (req.body.acceptances?.marketing?.accepted === true)
+      acceptanceInput.marketing = {
+        accepted: true,
+        hash:
+          typeof req.body.acceptances.marketing.hash === "string"
+            ? req.body.acceptances.marketing.hash
+            : null,
+      };
+    const requestHash = hash(
+      JSON.stringify({ input, acceptances: acceptanceInput }),
+    );
     let fresh = false;
     const o = await store.transaction(async () => {
       const existing = await store.get(
@@ -351,6 +398,8 @@ export async function createApp({
           );
         return existing;
       }
+      legal.validate(acceptanceInput);
+      legal.validateMarketing(acceptanceInput.marketing);
       const e = await store.event(input.event_id);
       if (
         !e ||
@@ -383,6 +432,7 @@ export async function createApp({
         `INSERT INTO orders (${keys.join(",")}) VALUES (${keys.map(() => "?").join(",")})`,
         ...Object.values(values),
       );
+      await legal.record(values, acceptanceInput);
       await store.enqueue(id, "created");
       fresh = true;
       return await store.get("SELECT * FROM orders WHERE id=?", id);
@@ -441,12 +491,24 @@ export async function createApp({
   });
   app.get("/api/tickets/:code", async (req, res) => {
     const t = await store.get(
-      `SELECT t.code,t.ordinal,t.used_at,o.first_name,o.last_name,o.status,o.mode,o.method,o.event_id FROM tickets t JOIN orders o ON o.id=t.order_id WHERE code=?`,
+      `SELECT t.code,t.ordinal,t.used_at,t.order_id,o.first_name,o.last_name,o.status,o.mode,o.method,o.event_id,o.voided_at,o.is_test FROM tickets t JOIN orders o ON o.id=t.order_id WHERE code=?`,
       req.params.code,
     );
     if (!t) throw new AppError(404, "Билет не найден");
+    if (t.voided_at)
+      throw new AppError(
+        410,
+        "Билет аннулирован. По вопросам заказа: event@chaika.team",
+      );
+    if (t.is_test)
+      throw new AppError(
+        409,
+        "Этот билет отмечен как тестовый и не даёт права прохода",
+      );
+    const { order_id, ...ticket } = t;
     res.json({
-      ...t,
+      ...ticket,
+      unsubscribe_url: await marketing.linkForOrder(order_id),
       event: await store.event(t.event_id),
       qr_image: await QRCode.toDataURL(`${origin}/ticket/${t.code}`, {
         width: 320,
@@ -512,10 +574,10 @@ export async function createApp({
     );
     if (req.staff.role === "door") return res.json({ events });
     const orders = await store.all(
-      "SELECT o.id,o.event_id,o.first_name,o.last_name,o.phone,o.email,o.quantity,o.total,o.status,o.method,o.mode,o.created_at,o.paid_at,o.checked_at,o.diagnostic,o.access_token,e.title,(SELECT COUNT(*) FROM tickets t WHERE t.order_id=o.id AND t.used_at IS NOT NULL) AS checked_count FROM orders o JOIN events e ON e.id=o.event_id ORDER BY o.created_at DESC LIMIT 500",
+      "SELECT o.id,o.event_id,o.first_name,o.last_name,o.phone,o.email,o.quantity,o.total,o.status,o.method,o.mode,o.is_test,o.voided_at,o.void_reason,o.created_at,o.paid_at,o.checked_at,o.diagnostic,o.access_token,e.title,(SELECT COUNT(*) FROM tickets t WHERE t.order_id=o.id AND t.used_at IS NOT NULL) AS checked_count FROM orders o JOIN events e ON e.id=o.event_id ORDER BY o.created_at DESC LIMIT 500",
     );
     const attendance = await store.get(
-      "SELECT COUNT(*) AS sold,COALESCE(SUM(CASE WHEN t.used_at IS NOT NULL THEN 1 ELSE 0 END),0) AS checked FROM tickets t JOIN orders o ON o.id=t.order_id WHERE o.status='paid' AND (?=1 OR o.mode='live')",
+      "SELECT COUNT(*) AS sold,COALESCE(SUM(CASE WHEN t.used_at IS NOT NULL THEN 1 ELSE 0 END),0) AS checked FROM tickets t JOIN orders o ON o.id=t.order_id WHERE o.status='paid' AND o.is_test=0 AND (o.voided_at IS NULL OR t.used_at IS NOT NULL) AND (?=1 OR o.mode='live')",
       demo ? 1 : 0,
     );
     res.json({
@@ -543,6 +605,22 @@ export async function createApp({
       ),
     });
   });
+  app.get(
+    "/api/admin/orders/:id/acceptances",
+    staff,
+    admin,
+    async (req, res) => {
+      if (!(await store.get("SELECT id FROM orders WHERE id=?", req.params.id)))
+        throw new AppError(404, "Заказ не найден");
+      res.json(
+        await store.all(
+          "SELECT a.kind,a.accepted_at,d.slug,d.version,d.hash,d.title,d.acceptance_label,NULL AS withdrawn_at FROM order_acceptances a JOIN legal_documents d ON d.hash=a.document_hash WHERE a.order_id=? UNION ALL SELECT 'marketing' AS kind,a.accepted_at,d.slug,d.version,d.hash,d.title,d.acceptance_label,a.withdrawn_at FROM sms_consents a JOIN legal_documents d ON d.hash=a.document_hash WHERE a.order_id=? ORDER BY kind",
+          req.params.id,
+          req.params.id,
+        ),
+      );
+    },
+  );
   app.post(
     "/api/admin/media",
     staff,
@@ -690,6 +768,32 @@ export async function createApp({
   app.post("/api/admin/orders/:id/recheck", staff, admin, async (req, res) => {
     await reconcile(req.params.id);
     res.json({ ok: true });
+  });
+  app.post("/api/admin/orders/:id/manage", staff, admin, async (req, res) => {
+    const action = z
+      .discriminatedUnion("action", [
+        z.object({
+          action: z.literal("void"),
+          reason: z.string().trim().min(3).max(500),
+          confirmed: z.literal(true),
+        }),
+        z.object({
+          action: z.literal("test"),
+          reason: z.string().trim().min(3).max(500),
+          isTest: z.boolean(),
+        }),
+      ])
+      .parse(req.body);
+    const order = await store.manageOrder(
+      req.params.id,
+      action,
+      `admin:${req.staff.id}`,
+    );
+    res.json({
+      id: order.id,
+      is_test: Boolean(order.is_test),
+      voided_at: order.voided_at,
+    });
   });
   app.post("/api/admin/qrm/check", staff, admin, async (_req, res) => {
     const m = await checkMerchant(mode());

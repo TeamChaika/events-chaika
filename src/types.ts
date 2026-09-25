@@ -37,6 +37,8 @@ export type OrderData = {
   unit_price: number;
   total: number;
   status: string;
+  voided_at: string | null;
+  is_test: boolean;
   method: string;
   mode: string;
   created_at: string;
@@ -45,6 +47,7 @@ export type OrderData = {
   qr_image: string | null;
   tickets: TicketData[];
   delivery: { channel: string; status: string }[];
+  unsubscribe_url: string | null;
 };
 export const money = (value: number) =>
   new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(

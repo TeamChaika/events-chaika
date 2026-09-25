@@ -46,6 +46,14 @@ import {
   MOON_INTRO_DURATION,
 } from "./useIntroPlayback";
 import { TicketCard } from "./TicketCard";
+import { MarketingLink, UnsubscribePage } from "./Marketing";
+import {
+  CookieNotice,
+  LegalLinks,
+  LegalPage,
+  legalHref,
+  type LegalCatalog,
+} from "./Legal";
 
 function Countdown({ event }: { event: EventData }) {
   const [time, setTime] = useState(Date.now());
@@ -193,7 +201,6 @@ function EventLanding({
   const [paused] = useState(
     () => matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
-  const [privacy, setPrivacy] = useState(false);
   const canBuy =
     Boolean(event.sales_open) &&
     event.available > 0 &&
@@ -318,14 +325,13 @@ function EventLanding({
           </div>
         </div>
       </main>
+      <CookieNotice />
       <footer className="public-footer">
         <span>Создаём поводы быть вместе.</span>
-        <button className="plain" onClick={() => setPrivacy(true)}>
-          Конфиденциальность
-        </button>
+        <LegalLinks />
         <small>@ Чайка Тим, 2026</small>
       </footer>
-      <div className="mobile-buy-bar" hidden={buy || privacy || introActive}>
+      <div className="mobile-buy-bar" hidden={buy || introActive}>
         <div className="hero-price">
           <strong>{money(event.price)}</strong>
           <span>за одного гостя</span>
@@ -343,19 +349,6 @@ function EventLanding({
       {buy && (
         <Checkout event={event} config={config} close={() => setBuy(false)} />
       )}
-      {privacy && (
-        <Modal title="Обработка данных" close={() => setPrivacy(false)}>
-          <p className="legal-copy">
-            Имя, фамилия, телефон и почта нужны для оформления заказа, отправки
-            билетов и проверки на входе. Рекламная рассылка не включена.
-          </p>
-          <p className="legal-copy">
-            Это локальная версия сайта. Перед публичным запуском организатор
-            должен указать свои реквизиты, политику обработки данных, условия
-            покупки и возврата.
-          </p>
-        </Modal>
-      )}
     </div>
   );
 }
@@ -372,8 +365,34 @@ function Checkout({
     [loading, setLoading] = useState(false),
     [error, setError] = useState("");
   const key = useRef(crypto.randomUUID());
+  const [legal, setLegal] = useState<LegalCatalog>();
+  const [legalError, setLegalError] = useState("");
+  const [accepted, setAccepted] = useState({
+    terms: false,
+    consent: false,
+    marketing: false,
+  });
+  async function loadLegal() {
+    setLegal(undefined);
+    setLegalError("");
+    setAccepted({ terms: false, consent: false, marketing: false });
+    try {
+      setLegal(await api<LegalCatalog>("/legal"));
+    } catch (e) {
+      setLegalError((e as Error).message);
+    }
+  }
+  useEffect(() => {
+    void loadLegal();
+  }, []);
+  const legalReady =
+    legal?.checkout_ready &&
+    ["terms", "consent"].every((slug) =>
+      legal.documents.some((doc) => doc.slug === slug),
+    );
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (loading || !legalReady || !accepted.terms || !accepted.consent) return;
     setLoading(true);
     setError("");
     const form = new FormData(e.currentTarget);
@@ -385,7 +404,15 @@ function Checkout({
           ...Object.fromEntries(form),
           event_id: event.id,
           quantity,
-          consent: form.get("consent") === "on",
+          acceptances: Object.fromEntries(
+            ["terms", "consent", "marketing"].map((slug) => [
+              slug,
+              {
+                accepted: accepted[slug as keyof typeof accepted],
+                hash: legal?.documents.find((doc) => doc.slug === slug)?.hash,
+              },
+            ]),
+          ),
         }),
       });
       location.href = "/order/" + order.access_token;
@@ -432,12 +459,90 @@ function Checkout({
             </button>
           </div>
         </div>
-        <label className="checkbox-label">
-          <input type="checkbox" name="consent" required />
-          <span>
-            Согласен на обработку данных для покупки и получения билетов
-          </span>
-        </label>
+        <div className="checkout-legal">
+          {!legal && !legalError && (
+            <p role="status" className="checkout-legal-note">
+              Загружаем документы…
+            </p>
+          )}
+          <ErrorNotice text={legalError} />
+          {legal?.preview &&
+            legal.documents.some((doc) => doc.status === "draft") && (
+              <div className="legal-draft">
+                <strong>Предварительный просмотр</strong>
+                <p>
+                  Документы ещё уточняются. Здесь можно проверить форму только с
+                  тестовым заказом.
+                </p>
+              </div>
+            )}
+          {legal && !legalReady && (
+            <p role="status" className="checkout-legal-note">
+              Документы для покупки ещё готовятся. Оформление временно
+              недоступно.
+            </p>
+          )}
+          {(["terms", "consent", "marketing"] as const).map((slug) => {
+            const doc = legal?.documents.find((item) => item.slug === slug);
+            if (slug === "marketing" && !legal?.marketing_ready) return null;
+            return (
+              doc && (
+                <label key={doc.hash} className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    name={slug}
+                    required={slug !== "marketing"}
+                    checked={accepted[slug]}
+                    disabled={loading || !legalReady}
+                    onChange={(e) =>
+                      setAccepted((value) => ({
+                        ...value,
+                        [slug]: e.target.checked,
+                      }))
+                    }
+                  />
+                  <span>
+                    {slug === "marketing" && (
+                      <span className="marketing-optional">Необязательно</span>
+                    )}
+                    {doc.acceptance_label}{" "}
+                    <a href={legalHref(doc)} target="_blank" rel="noreferrer">
+                      Читать документ ↗
+                    </a>
+                  </span>
+                </label>
+              )
+            );
+          })}
+          {legal && (
+            <p className="checkout-legal-note">
+              Продавец: ООО «БРИЗ», ИНН 9103090740.{" "}
+              <a href="mailto:event@chaika.team">event@chaika.team</a>.<br />
+              {legal.documents
+                .filter((doc) => ["privacy", "cookies"].includes(doc.slug))
+                .map((doc) => (
+                  <React.Fragment key={doc.hash}>
+                    <a href={legalHref(doc)} target="_blank" rel="noreferrer">
+                      {doc.title} ↗
+                    </a>
+                    {" · "}
+                  </React.Fragment>
+                ))}
+              Рекламная подписка добровольная. От неё можно отказаться в любое
+              время.
+            </p>
+          )}
+          {(legalError || error) && (
+            <button
+              type="button"
+              className="text-link"
+              disabled={loading}
+              onClick={loadLegal}
+            >
+              Обновить документы
+            </button>
+          )}
+        </div>
         <div className="checkout-total">
           <span>К оплате</span>
           <strong>{money(event.price * quantity)}</strong>
@@ -452,7 +557,13 @@ function Checkout({
         )}
         <button
           className="button primary full"
-          disabled={loading || !config.paymentReady}
+          disabled={
+            loading ||
+            !config.paymentReady ||
+            !legalReady ||
+            !accepted.terms ||
+            !accepted.consent
+          }
         >
           {loading ? <Spinner /> : <ShieldCheck size={18} />}{" "}
           {config.paymentReady
@@ -502,7 +613,10 @@ function OrderPage() {
     };
   }, [access]);
   const singleTicketPath =
-    order?.status === "paid" && order.tickets.length === 1
+    order?.status === "paid" &&
+    !order.voided_at &&
+    !order.is_test &&
+    order.tickets.length === 1
       ? "/ticket/" + order.tickets[0].code
       : null;
   useEffect(() => {
@@ -511,6 +625,8 @@ function OrderPage() {
   const introActive = Boolean(
     showIntro &&
       order?.status === "paid" &&
+      !order.voided_at &&
+      !order.is_test &&
       order.event.id === "red-moon" &&
       order.tickets.length > 1,
   );
@@ -553,6 +669,20 @@ function OrderPage() {
           <ErrorNotice text={error} />
           {!order ? (
             <Spinner />
+          ) : order.voided_at || order.is_test ? (
+            <div className="payment-box">
+              <h1>
+                {order.voided_at ? "Билеты аннулированы" : "Тестовый заказ"}
+              </h1>
+              <p>По этому заказу вход недоступен. История оплаты сохранена.</p>
+              <p>
+                Для вопросов и возврата:{" "}
+                <a href="mailto:event@chaika.team">event@chaika.team</a>.
+              </p>
+              <span className="order-reference">
+                Заказ {order.id.slice(0, 8).toUpperCase()}
+              </span>
+            </div>
           ) : order.status === "paid" ? (
             <>
               <div className="success-icon">
@@ -699,6 +829,7 @@ function OrderPage() {
               </span>
             </div>
           )}
+          <MarketingLink url={order?.unsubscribe_url} />
         </main>
       </div>
     </>
@@ -725,6 +856,7 @@ function SingleTicket() {
         first_name: string;
         last_name: string;
         mode: string;
+        unsubscribe_url: string | null;
       }
     >(),
     [error, setError] = useState("");
@@ -735,6 +867,7 @@ function SingleTicket() {
         first_name: string;
         last_name: string;
         mode: string;
+        unsubscribe_url: string | null;
       }
     >("/tickets/" + location.pathname.split("/")[2])
       .then(setData)
@@ -773,6 +906,7 @@ function SingleTicket() {
               <Download size={16} />
               Сохранить билет
             </button>
+            <MarketingLink url={data.unsubscribe_url} />
             {data.event.id === "red-moon" && !data.used_at && (
               <button
                 className="cinema-ticket-replay"
@@ -791,7 +925,11 @@ function SingleTicket() {
 }
 export default function App() {
   const path = location.pathname;
-  return path.startsWith("/admin") || path.startsWith("/checkin") ? (
+  return path === "/legal" || path.startsWith("/legal/") ? (
+    <LegalPage />
+  ) : path.startsWith("/unsubscribe/") ? (
+    <UnsubscribePage />
+  ) : path.startsWith("/admin") || path.startsWith("/checkin") ? (
     <Admin />
   ) : path.startsWith("/order/") ? (
     <OrderPage />

@@ -5,9 +5,17 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApp } from "../server/index.mjs";
+import { currentLegalDocuments } from "../server/legal.mjs";
 import pg from "pg";
 
 const origin = "http://localhost:5173";
+// These are technical test fixtures, not approved real-world legal texts.
+const fixtureLegalDocuments = currentLegalDocuments.map((doc) => ({
+  ...doc,
+  version: "fixture.1",
+  status: "published",
+  content: `# ${doc.title}\n\nTechnical test fixture: ${doc.slug}.`,
+}));
 const guest = {
   first_name: "Тест",
   last_name: "Проверочный",
@@ -39,6 +47,7 @@ async function harness(t, options = {}) {
     demo: true,
     origin,
     testing: true,
+    legalDocuments: fixtureLegalDocuments,
     ...options,
   });
   await instance.store.run(
@@ -81,12 +90,252 @@ async function harness(t, options = {}) {
     return { status: r.status, body: await r.json() };
   };
   await request("/config");
+  const catalog = (await request("/legal")).body;
+  const acceptances = Object.fromEntries(
+    catalog.documents
+      .filter((doc) => ["terms", "consent"].includes(doc.slug))
+      .map((doc) => [doc.slug, { accepted: true, hash: doc.hash }]),
+  );
   const order = (body = guest, key = randomUUID()) =>
-    request("/orders", { method: "POST", body, key });
+    request("/orders", { method: "POST", body: { acceptances, ...body }, key });
   const login = (role = "admin") =>
     request("/auth/login", { method: "POST", body: { role, demo: true } });
-  return { ...instance, request, order, login, databaseUrl, base };
+  return {
+    ...instance,
+    request,
+    order,
+    login,
+    databaseUrl,
+    base,
+    acceptances,
+    catalog,
+  };
 }
+
+const marketingBody = (h, extra = {}) => ({
+  ...guest,
+  ...extra,
+  acceptances: {
+    ...h.acceptances,
+    marketing: {
+      accepted: true,
+      hash: h.catalog.documents.find((d) => d.slug === "marketing").hash,
+    },
+  },
+});
+
+test("advertising is optional, never inferred, and requires the displayed document hash", async (t) => {
+  const h = await harness(t);
+  const ordinary = await h.order();
+  assert.equal(ordinary.status, 201);
+  assert.equal(ordinary.body.unsubscribe_url, null);
+  for (const accepted of [false, "true", 1]) {
+    const body = marketingBody(h);
+    body.acceptances.marketing = { accepted, hash: "stale" };
+    assert.equal((await h.order(body)).status, 201);
+  }
+  assert.equal(
+    (await h.store.get("SELECT COUNT(*) AS n FROM sms_consents")).n,
+    0,
+  );
+  const stale = marketingBody(h);
+  stale.acceptances.marketing.hash = "0".repeat(64);
+  assert.equal((await h.order(stale)).status, 409);
+  assert.equal((await h.store.get("SELECT COUNT(*) AS n FROM orders")).n, 4);
+  assert.equal(
+    (await h.store.get("SELECT COUNT(*) AS n FROM sms_consents")).n,
+    0,
+  );
+});
+
+test("SMS opt-in stores server evidence and unsubscribe does not cancel tickets or resubscribe on retry", async (t) => {
+  const h = await harness(t);
+  const key = randomUUID();
+  const body = marketingBody(h, {
+    accepted_at: "1900-01-01",
+    content: "forged",
+  });
+  const created = await h.order(body, key);
+  assert.equal(created.status, 201);
+  const saved = await h.store.get(
+    "SELECT a.*,d.content FROM sms_consents a JOIN legal_documents d ON d.hash=a.document_hash WHERE order_id=?",
+    created.body.id,
+  );
+  assert.equal(saved.accepted_at, created.body.created_at);
+  assert.match(saved.buyer_session, /^[a-f0-9]{64}$/);
+  assert.match(saved.unsubscribe_token, /^[a-f0-9]{48}$/);
+  assert.equal(
+    saved.content,
+    fixtureLegalDocuments.find((d) => d.slug === "marketing").content,
+  );
+  const subscription = "/marketing/" + saved.unsubscribe_token;
+  const unsubscribe = subscription + "/unsubscribe";
+  assert.equal(
+    created.body.unsubscribe_url,
+    "/unsubscribe/" + saved.unsubscribe_token,
+  );
+  assert.deepEqual((await h.request(subscription)).body, { subscribed: true });
+  assert.equal(
+    (
+      await h.store.get(
+        "SELECT withdrawn_at FROM sms_consents WHERE order_id=?",
+        created.body.id,
+      )
+    ).withdrawn_at,
+    null,
+  );
+  const adminUrl = `/admin/orders/${created.body.id}/acceptances`;
+  assert.equal((await h.request(adminUrl)).status, 401);
+  await h.login("door");
+  assert.equal((await h.request(adminUrl)).status, 403);
+  await h.login();
+  assert.equal(
+    (await h.request(adminUrl)).body.find((r) => r.kind === "marketing")
+      .withdrawn_at,
+    null,
+  );
+  const second = await h.order(
+    marketingBody(h, { phone: "8 (999) 000-00-00" }),
+  );
+  const otherPhone = await h.order(marketingBody(h, { phone: "+79991111111" }));
+  assert.equal(second.status, 201);
+  assert.equal(otherPhone.status, 201);
+  await h.store.markPaid(created.body.id);
+  const ticket = await h.store.get(
+    "SELECT code FROM tickets WHERE order_id=? ORDER BY ordinal",
+    created.body.id,
+  );
+  assert.equal(
+    (await h.request(`/tickets/${ticket.code}`)).body.unsubscribe_url,
+    created.body.unsubscribe_url,
+  );
+  assert.equal(
+    (
+      await h.request(unsubscribe, {
+        method: "POST",
+        body: {},
+        asOrigin: "https://evil.example",
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await h.request("/marketing/" + "0".repeat(48) + "/unsubscribe", {
+        method: "POST",
+        body: {},
+      })
+    ).status,
+    404,
+  );
+  assert.equal(
+    (await h.request(unsubscribe, { method: "POST", body: {} })).status,
+    200,
+  );
+  const withdrawn = await h.store.get(
+    "SELECT * FROM sms_consents WHERE order_id=?",
+    created.body.id,
+  );
+  assert.ok(withdrawn.withdrawn_at);
+  assert.equal(
+    (
+      await h.store.get(
+        "SELECT withdrawn_at FROM sms_consents WHERE order_id=?",
+        second.body.id,
+      )
+    ).withdrawn_at,
+    withdrawn.withdrawn_at,
+  );
+  assert.equal(
+    (
+      await h.store.get(
+        "SELECT withdrawn_at FROM sms_consents WHERE order_id=?",
+        otherPhone.body.id,
+      )
+    ).withdrawn_at,
+    null,
+  );
+  assert.deepEqual((await h.request(subscription)).body, { subscribed: false });
+  assert.equal(
+    (await h.request(unsubscribe, { method: "POST", body: {} })).status,
+    200,
+  );
+  assert.equal((await h.order(body, key)).status, 200);
+  assert.equal(
+    (
+      await h.store.get(
+        "SELECT withdrawn_at FROM sms_consents WHERE order_id=?",
+        created.body.id,
+      )
+    ).withdrawn_at,
+    withdrawn.withdrawn_at,
+  );
+  assert.equal(
+    (await h.request(adminUrl)).body.find((r) => r.kind === "marketing")
+      .withdrawn_at,
+    withdrawn.withdrawn_at,
+  );
+  assert.equal((await h.request(`/tickets/${ticket.code}`)).status, 200);
+  assert.equal(
+    (await h.store.get("SELECT status FROM orders WHERE id=?", created.body.id))
+      .status,
+    "paid",
+  );
+  assert.equal(
+    (
+      await h.store.get(
+        "SELECT COUNT(*) AS n FROM outbox WHERE kind NOT IN ('created','tickets')",
+      )
+    ).n,
+    0,
+  );
+  await h.order(); // A later purchase without the checkbox is not a resubscription.
+  assert.deepEqual((await h.request(subscription)).body, { subscribed: false });
+  const renewed = await h.order(marketingBody(h, { phone: "79990000000" }));
+  assert.equal(renewed.status, 201);
+  assert.deepEqual((await h.request(subscription)).body, { subscribed: true });
+  await h.request(unsubscribe, { method: "POST", body: {} }); // Old links keep working.
+  assert.ok(
+    (
+      await h.store.get(
+        "SELECT withdrawn_at FROM sms_consents WHERE order_id=?",
+        renewed.body.id,
+      )
+    ).withdrawn_at,
+  );
+});
+
+test("SMS opt-in rolls back with an unsuccessful order", async (t) => {
+  const h = await harness(t);
+  t.mock.method(h.store, "enqueue", async () => {
+    throw new Error("fixture rollback");
+  });
+  assert.equal((await h.order(marketingBody(h))).status, 500);
+  assert.equal(
+    (await h.store.get("SELECT COUNT(*) AS n FROM sms_consents")).n,
+    0,
+  );
+  assert.equal(
+    (await h.store.get("SELECT COUNT(*) AS n FROM order_acceptances")).n,
+    0,
+  );
+  assert.equal((await h.store.get("SELECT COUNT(*) AS n FROM orders")).n, 0);
+});
+
+test("an unfinished optional marketing document does not block completed purchase documents", async (t) => {
+  const h = await harness(t, {
+    demo: false,
+    legalDocuments: fixtureLegalDocuments.map((d) =>
+      d.slug === "marketing" ? { ...d, status: "draft" } : d,
+    ),
+  });
+  assert.equal(h.catalog.checkout_ready, true);
+  assert.equal(h.catalog.marketing_ready, false);
+  assert.equal(
+    h.catalog.documents.some((d) => d.slug === "marketing"),
+    false,
+  );
+});
 
 test("SMS checks require admin and known SMS IDs are rechecked without resending", async (t) => {
   const h = await harness(t);
@@ -336,7 +585,7 @@ test("demo expiry releases reservations and refuses simulated late pay", async (
 });
 test("missing consent, invalid quantity and hidden event are rejected", async (t) => {
   const h = await harness(t);
-  assert.equal((await h.order({ ...guest, consent: false })).status, 400);
+  assert.equal((await h.order({ ...guest, acceptances: {} })).status, 400);
   assert.equal((await h.order({ ...guest, quantity: 0 })).status, 400);
   await h.store.run("UPDATE events SET published=0");
   assert.equal((await h.order()).status, 409);
@@ -629,6 +878,7 @@ test(
     assert.equal(uploaded.status, 201);
     const second = await createApp({
       databaseUrl: first.databaseUrl,
+      legalDocuments: fixtureLegalDocuments,
       demo: true,
       origin,
       testing: true,
@@ -1001,6 +1251,494 @@ test("one group QR admits three then two guests; retries and stale confirmations
     (await h.store.get("SELECT COUNT(*) AS n FROM checkin_batches")).n,
     2,
   );
+});
+
+test("checkout requires separate affirmative acceptances of the current server texts", async (t) => {
+  const h = await harness(t);
+  for (const [body, status] of [
+    [{ ...guest, acceptances: undefined }, 400],
+    [
+      {
+        ...guest,
+        acceptances: {
+          ...h.acceptances,
+          terms: { ...h.acceptances.terms, accepted: false },
+        },
+      },
+      400,
+    ],
+    [
+      {
+        ...guest,
+        acceptances: {
+          ...h.acceptances,
+          consent: { ...h.acceptances.consent, accepted: "true" },
+        },
+      },
+      400,
+    ],
+    [
+      {
+        ...guest,
+        acceptances: {
+          ...h.acceptances,
+          consent: { accepted: true, hash: "0".repeat(64) },
+        },
+      },
+      409,
+    ],
+  ]) {
+    assert.equal((await h.order(body)).status, status);
+  }
+  assert.equal((await h.store.get("SELECT COUNT(*) AS n FROM orders")).n, 0);
+  assert.equal(
+    (await h.store.get("SELECT COUNT(*) AS n FROM order_acceptances")).n,
+    0,
+  );
+  assert.equal((await h.store.get("SELECT COUNT(*) AS n FROM outbox")).n, 0);
+});
+
+test("acceptance evidence preserves server text and time on retries and is admin-only", async (t) => {
+  const h = await harness(t);
+  const key = randomUUID();
+  const body = {
+    ...guest,
+    accepted_at: "1900-01-01",
+    content: "Forged client text",
+  };
+  const created = await h.order(body, key);
+  assert.equal(created.status, 201);
+  const records = await h.store.all(
+    "SELECT a.*,d.version,d.content,d.acceptance_label FROM order_acceptances a JOIN legal_documents d ON d.hash=a.document_hash WHERE order_id=? ORDER BY kind",
+    created.body.id,
+  );
+  assert.equal(records.length, 2);
+  assert.equal(records[0].accepted_at, created.body.created_at);
+  assert.equal(records[1].accepted_at, created.body.created_at);
+  assert.match(records[0].buyer_session, /^[a-f0-9]{64}$/);
+  for (const record of records) {
+    assert.equal(
+      record.content,
+      fixtureLegalDocuments.find((doc) => doc.slug === record.kind).content,
+    );
+    assert.equal(record.document_hash, h.acceptances[record.kind].hash);
+  }
+  assert.equal((await h.order(body, key)).status, 200);
+  assert.deepEqual(
+    await h.store.all(
+      "SELECT a.*,d.version,d.content,d.acceptance_label FROM order_acceptances a JOIN legal_documents d ON d.hash=a.document_hash WHERE order_id=? ORDER BY kind",
+      created.body.id,
+    ),
+    records,
+  );
+  assert.equal(created.body.acceptances, undefined);
+  const url = `/admin/orders/${created.body.id}/acceptances`;
+  assert.equal((await h.request(url)).status, 401);
+  await h.login("door");
+  assert.equal((await h.request(url)).status, 403);
+  await h.login();
+  const audit = await h.request(url);
+  assert.equal(audit.status, 200);
+  assert.equal(audit.body.length, 2);
+  assert.ok(
+    audit.body.every(
+      (record) => !record.buyer_session && record.version === "fixture.1",
+    ),
+  );
+  const changed = {
+    ...guest,
+    acceptances: {
+      ...h.acceptances,
+      terms: { ...h.acceptances.terms, hash: "0".repeat(64) },
+    },
+  };
+  assert.equal((await h.order(changed, key)).status, 409);
+});
+
+test("order and its acceptance evidence roll back together on an internal failure", async (t) => {
+  const h = await harness(t);
+  t.mock.method(h.store, "enqueue", async () => {
+    throw new Error("fixture failure after acceptance");
+  });
+  assert.equal((await h.order()).status, 500);
+  assert.equal((await h.store.get("SELECT COUNT(*) AS n FROM orders")).n, 0);
+  assert.equal(
+    (await h.store.get("SELECT COUNT(*) AS n FROM order_acceptances")).n,
+    0,
+  );
+});
+
+test("accepted documents survive restart and publishing a new version; old text cannot be rewritten", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "chaika-legal-"));
+  // Registered first, so cleanup runs after the harness closes the database.
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const dbPath = join(dir, "test.sqlite");
+  const h = await harness(t, { dbPath });
+  const order = await h.order();
+  const changed = fixtureLegalDocuments.map((doc) => ({
+    ...doc,
+    content: doc.content + " Updated.",
+  }));
+  await assert.rejects(
+    () =>
+      createApp({
+        dbPath,
+        databaseUrl: h.databaseUrl,
+        demo: true,
+        testing: true,
+        legalDocuments: changed,
+      }),
+    /without a new version/,
+  );
+  const second = await createApp({
+    dbPath,
+    databaseUrl: h.databaseUrl,
+    demo: true,
+    testing: true,
+    legalDocuments: changed.map((doc) => ({ ...doc, version: "fixture.2" })),
+  });
+  try {
+    const records = await second.store.all(
+      "SELECT d.version,d.content FROM order_acceptances a JOIN legal_documents d ON d.hash=a.document_hash WHERE order_id=?",
+      order.body.id,
+    );
+    assert.equal(records.length, 2);
+    assert.ok(
+      records.every(
+        (record) =>
+          record.version === "fixture.1" && !record.content.includes("Updated"),
+      ),
+    );
+    const old = await h.request(
+      `/legal/terms?hash=${h.acceptances.terms.hash}`,
+    );
+    assert.equal(
+      old.body.content,
+      fixtureLegalDocuments.find((doc) => doc.slug === "terms").content,
+    );
+    assert.equal(
+      (await h.request("/legal/terms?hash=../../secrets")).status,
+      404,
+    );
+  } finally {
+    await second.close();
+  }
+});
+
+test("draft documents are visible only in local demo and cannot be relabelled as published", async (t) => {
+  const drafts = currentLegalDocuments.map((doc) => ({
+    ...doc,
+    version: "fixture-draft.1",
+    status: "draft",
+    content: `# ${doc.title}\n\nЧЕРНОВИК. [УТОЧНИТЬ: текст перед публикацией.]`,
+  }));
+  const preview = await harness(t, { legalDocuments: drafts });
+  assert.equal(preview.catalog.checkout_ready, true);
+  assert.equal(preview.catalog.preview, true);
+  assert.equal((await preview.order()).status, 201);
+  const live = await harness(t, {
+    demo: false,
+    legalDocuments: drafts,
+  });
+  assert.equal(live.catalog.checkout_ready, false);
+  assert.equal(live.catalog.preview, false);
+  assert.deepEqual(live.catalog.documents, []);
+  assert.equal(
+    (
+      await live.request(
+        `/legal/consent?hash=${preview.acceptances.consent.hash}`,
+      )
+    ).status,
+    404,
+  );
+  await assert.rejects(
+    () =>
+      createApp({
+        dbPath: ":memory:",
+        demo: false,
+        testing: true,
+        legalDocuments: drafts.map((doc) => ({
+          ...doc,
+          status: "published",
+        })),
+      }),
+    /incomplete legal/,
+  );
+});
+
+test("the release catalog opens real checkout and exposes immutable published documents", async (t) => {
+  const h = await harness(t, {
+    demo: false,
+    legalDocuments: currentLegalDocuments,
+  });
+  assert.equal(h.catalog.preview, false);
+  assert.equal(h.catalog.checkout_ready, true);
+  assert.equal(h.catalog.marketing_ready, true);
+  assert.equal(h.catalog.documents.length, 5);
+  for (const doc of h.catalog.documents) {
+    assert.equal(doc.status, "published");
+    const response = await h.request(`/legal/${doc.slug}?hash=${doc.hash}`);
+    assert.equal(response.status, 200);
+    assert.equal(
+      response.body.content,
+      currentLegalDocuments.find((d) => d.slug === doc.slug).content,
+    );
+    assert.doesNotMatch(
+      response.body.content,
+      /ЧЕРНОВИК|\[(?:УТОЧНИТЬ|УТВЕРДИТЬ|ДОПОЛНИТЬ|ОПРЕДЕЛИТЬ|ДО ПУБЛИКАЦИИ|ЮРИДИЧЕСКОЕ)/i,
+    );
+  }
+});
+
+test("annulling remaining tickets preserves payments, past entry, evidence, and capacity accounting", async (t) => {
+  const h = await harness(t);
+  const created = await h.order({ ...guest, quantity: 5 });
+  await h.store.markPaid(created.body.id);
+  const tickets = await h.store.all(
+    "SELECT code FROM tickets WHERE order_id=? ORDER BY ordinal",
+    created.body.id,
+  );
+  await h.store.checkinGroup(
+    tickets[0].code,
+    "red-moon",
+    3,
+    0,
+    randomUUID(),
+    "door",
+    true,
+  );
+  const paid = await h.store.get(
+    "SELECT total,paid_at FROM orders WHERE id=?",
+    created.body.id,
+  );
+  const path = `/admin/orders/${created.body.id}/manage`;
+  const command = {
+    action: "void",
+    reason: "Проверка группы 3 + 2",
+    confirmed: true,
+  };
+  assert.equal(
+    (await h.request(path, { method: "POST", body: command })).status,
+    401,
+  );
+  await h.login("door");
+  assert.equal(
+    (await h.request(path, { method: "POST", body: command })).status,
+    403,
+  );
+  await h.login();
+  assert.equal(
+    (
+      await h.request(path, {
+        method: "POST",
+        body: { ...command, confirmed: false },
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await h.request(path, {
+        method: "POST",
+        body: { ...command, reason: "" },
+      })
+    ).status,
+    400,
+  );
+  const response = await h.request(path, { method: "POST", body: command });
+  assert.equal(response.status, 200);
+  assert.ok(response.body.voided_at);
+  assert.equal(
+    (await h.request(path, { method: "POST", body: command })).body.voided_at,
+    response.body.voided_at,
+  );
+  await h.store.markPaid(created.body.id);
+  const saved = await h.store.get(
+    "SELECT * FROM orders WHERE id=?",
+    created.body.id,
+  );
+  assert.equal(saved.status, "paid");
+  assert.equal(saved.total, paid.total);
+  assert.equal(saved.paid_at, paid.paid_at);
+  assert.equal(saved.voided_at, response.body.voided_at);
+  assert.equal((await h.store.get("SELECT COUNT(*) AS n FROM tickets")).n, 5);
+  assert.equal(
+    (await h.store.get("SELECT COUNT(*) AS n FROM order_acceptances")).n,
+    2,
+  );
+  assert.equal(
+    (await h.store.get("SELECT COUNT(*) AS n FROM checkin_batches")).n,
+    1,
+  );
+  assert.equal((await h.store.event("red-moon")).available, 197);
+  assert.deepEqual(await h.store.attendance("red-moon", true), {
+    issued: 3,
+    checked: 3,
+    remaining: 0,
+  });
+  const overview = (await h.request("/admin/overview")).body;
+  assert.equal(overview.stats.revenue, paid.total);
+  assert.equal(overview.stats.sold, 3);
+  assert.equal(overview.stats.checked, 3);
+  assert.equal(overview.orders[0].void_reason, command.reason);
+  assert.deepEqual(
+    (await h.store.searchTickets("red-moon", "Проверочный", true)).orders,
+    [],
+  );
+  assert.equal((await h.request(`/tickets/${tickets[3].code}`)).status, 410);
+  const publicOrder = (await h.request(`/orders/${created.body.access_token}`))
+    .body;
+  assert.deepEqual(publicOrder.tickets, []);
+  assert.equal(publicOrder.status, "paid");
+  await assert.rejects(
+    h.store.previewCheckin(tickets[3].code, "red-moon", true),
+    /аннулирован/,
+  );
+  await assert.rejects(
+    h.store.checkin(tickets[3].code, "red-moon", "door", true),
+    /аннулирован/,
+  );
+  await assert.rejects(
+    h.store.checkinGroup(
+      tickets[3].code,
+      "red-moon",
+      2,
+      3,
+      randomUUID(),
+      "door",
+      true,
+    ),
+    /аннулирован/,
+  );
+  assert.equal(
+    (
+      await h.store.get(
+        "SELECT COUNT(*) AS n FROM audit WHERE action LIKE '%tickets_voided%'",
+      )
+    ).n,
+    1,
+  );
+  assert.equal(
+    (
+      await h.store.get(
+        "SELECT COUNT(*) AS n FROM outbox WHERE status IN ('pending','retry')",
+      )
+    ).n,
+    0,
+  );
+});
+
+test("test flag hides guests and blocks entry without freeing seats or hiding actual payment totals", async (t) => {
+  const h = await harness(t);
+  const order = await h.order();
+  await h.store.markPaid(order.body.id);
+  const code = (await h.store.get("SELECT code FROM tickets LIMIT 1")).code;
+  await h.store.checkin(code, "red-moon", "door", true);
+  await h.login();
+  const path = `/admin/orders/${order.body.id}/manage`;
+  assert.equal(
+    (
+      await h.request(path, {
+        method: "POST",
+        body: { action: "test", isTest: true, reason: "Тест покупки" },
+      })
+    ).status,
+    200,
+  );
+  assert.deepEqual(await h.store.attendance("red-moon", true), {
+    issued: 0,
+    checked: 0,
+    remaining: 0,
+  });
+  assert.equal((await h.store.event("red-moon")).available, 198);
+  const summary = (await h.request("/admin/overview")).body;
+  assert.equal(summary.stats.revenue, order.body.total);
+  assert.equal(summary.orders[0].is_test, 1);
+  await assert.rejects(
+    h.store.checkin(code, "red-moon", "door", true),
+    /Тестовый/,
+  );
+  assert.equal((await h.request(`/tickets/${code}`)).status, 409);
+  assert.deepEqual(
+    (await h.store.searchTickets("red-moon", "Проверочный", true)).orders,
+    [],
+  );
+  assert.equal(
+    (
+      await h.request(path, {
+        method: "POST",
+        body: {
+          action: "test",
+          isTest: false,
+          reason: "Проверка снятия пометки",
+        },
+      })
+    ).status,
+    200,
+  );
+  assert.deepEqual(await h.store.attendance("red-moon", true), {
+    issued: 2,
+    checked: 1,
+    remaining: 1,
+  });
+  assert.equal((await h.request(`/tickets/${code}`)).status, 200);
+  assert.equal(
+    (
+      await h.store.get(
+        "SELECT COUNT(*) AS n FROM audit WHERE action LIKE '%test_%'",
+      )
+    ).n,
+    2,
+  );
+});
+
+test("pending payments cannot be annulled; late payment on an annulled closed order cannot issue tickets", async (t) => {
+  const h = await harness(t);
+  const order = await h.order();
+  await h.login();
+  const path = `/admin/orders/${order.body.id}/manage`;
+  const body = {
+    action: "void",
+    reason: "Тест неоплаченного заказа",
+    confirmed: true,
+  };
+  assert.equal((await h.request(path, { method: "POST", body })).status, 409);
+  await h.store.run(
+    "UPDATE orders SET status='expired' WHERE id=?",
+    order.body.id,
+  );
+  assert.equal((await h.request(path, { method: "POST", body })).status, 200);
+  await h.store.markPaid(order.body.id);
+  assert.equal((await h.store.get("SELECT status FROM orders")).status, "paid");
+  assert.equal((await h.store.get("SELECT COUNT(*) AS n FROM tickets")).n, 0);
+  assert.equal((await h.store.event("red-moon")).available, 200);
+});
+
+test("a concurrent admission and annulment serialize, and no later scan can enter", async (t) => {
+  const h = await harness(t);
+  const order = await h.order();
+  await h.store.markPaid(order.body.id);
+  const code = (await h.store.get("SELECT code FROM tickets LIMIT 1")).code;
+  const results = await Promise.allSettled([
+    h.store.manageOrder(
+      order.body.id,
+      { action: "void", reason: "Тест гонки" },
+      "admin",
+    ),
+    h.store.checkinGroup(code, "red-moon", 1, 0, randomUUID(), "door", true),
+  ]);
+  assert.equal(results[0].status, "fulfilled");
+  await assert.rejects(
+    h.store.checkinGroup(code, "red-moon", 1, 0, randomUUID(), "door", true),
+    /аннулирован/,
+  );
+  const used = (
+    await h.store.get(
+      "SELECT COUNT(*) AS n FROM tickets WHERE used_at IS NOT NULL",
+    )
+  ).n;
+  assert.equal(used, results[1].status === "fulfilled" ? 1 : 0);
+  assert.equal((await h.store.event("red-moon")).available, 200 - used);
 });
 
 test("parallel group confirmations serialize and enforce remaining count and revision", async (t) => {
