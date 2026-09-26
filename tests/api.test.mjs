@@ -1822,3 +1822,45 @@ test("group entry validates ticket mode, payment and selected event before chang
     0,
   );
 });
+
+test("production CSP permits the counter only on the public homepage", async (t) => {
+  const saved = Object.fromEntries(
+    ["NODE_ENV", "ADMIN_PASSWORD", "SCANNER_PASSWORD"].map((k) => [
+      k,
+      process.env[k],
+    ]),
+  );
+  Object.assign(process.env, {
+    NODE_ENV: "production",
+    ADMIN_PASSWORD: "local-test-admin-password-only",
+    SCANNER_PASSWORD: "local-test-scanner-password-only",
+  });
+  try {
+    const h = await harness(t, {
+      demo: false,
+      origin: "https://event.chaika.team",
+    });
+    for (const path of [
+      "/",
+      "/ticket/test",
+      "/order/test",
+      "/admin",
+      "/checkin",
+      "/legal/privacy",
+      "/api/config",
+    ]) {
+      const response = await fetch(h.base + path);
+      const policy = response.headers.get("content-security-policy");
+      assert.ok(policy, path);
+      assert.equal(policy.includes("https://mc.yandex.ru"), path === "/", path);
+      assert.ok(!policy.includes("unsafe-eval"));
+      assert.ok(policy.includes("frame-ancestors 'none'"));
+      assert.ok(!policy.includes(" null"));
+    }
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});

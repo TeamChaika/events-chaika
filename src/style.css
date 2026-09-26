@@ -3099,6 +3099,49 @@ td .diagnostic {
   display: none;
 }
 
+.public-app .cookie-notice.analytics-notice {
+  position: fixed;
+  z-index: 35;
+  right: 24px;
+  bottom: 24px;
+  width: min(540px, calc(100% - 48px));
+  max-width: 540px;
+  margin: 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  box-shadow: 0 8px 40px #0009;
+}
+.public-app .cookie-notice.analytics-notice p,
+.public-app .cookie-notice.analytics-notice .button {
+  font-size: 12px;
+}
+.cookie-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.cookie-actions .button {
+  flex: 1 1 190px;
+  min-width: 0;
+  white-space: normal;
+}
+@media screen and (max-width: 800px),
+  screen and (max-width: 950px) and (max-height: 500px) {
+  .public-app .cookie-notice.analytics-notice {
+    right: 12px;
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+    width: calc(100% - 24px);
+    padding: 12px;
+    max-height: calc(100svh - 112px - env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+  }
+  .cookie-actions .button {
+    flex-basis: 130px;
+    padding-inline: 8px;
+  }
+}
+
 /* Let large monitors use the full stage. Height also limits the scale so
    ultrawide screens keep the purchase action within the first viewport. */
 @media screen and (min-width: 1600px) and (min-height: 801px) {

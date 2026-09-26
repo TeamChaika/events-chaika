@@ -3,6 +3,15 @@ import { ArrowLeft, FileText } from "lucide-react";
 import { api } from "./types";
 import { Brand, ErrorNotice, Spinner } from "./ui";
 import "./legal.css";
+import {
+  ANALYTICS_CHOICE_KEY,
+  COOKIE_SETTINGS_EVENT,
+  readAnalyticsChoice,
+  saveAnalyticsChoice,
+  startAnalytics,
+  stopAnalytics,
+  type AnalyticsChoice,
+} from "./analytics";
 
 export type LegalDocument = {
   slug: string;
@@ -37,40 +46,93 @@ export function LegalLinks() {
           {title}
         </a>
       ))}
+      <a
+        href="/?cookies=settings"
+        onClick={(event) => {
+          if (location.pathname !== "/") return;
+          event.preventDefault();
+          window.dispatchEvent(new Event(COOKIE_SETTINGS_EVENT));
+        }}
+      >
+        Настройки cookies
+      </a>
     </nav>
   );
 }
 
-const noticeKey = "chaika.cookie-notice.v1";
+function storedChoice(): AnalyticsChoice {
+  try {
+    return readAnalyticsChoice(localStorage);
+  } catch {
+    return null;
+  }
+}
 export function CookieNotice() {
-  const [visible, setVisible] = useState(() => {
-    try {
-      return sessionStorage.getItem(noticeKey) !== "seen";
-    } catch {
-      return true;
+  const [choice, setChoice] = useState<AnalyticsChoice>(storedChoice);
+  const [visible, setVisible] = useState(
+    () =>
+      !choice ||
+      new URLSearchParams(location.search).get("cookies") === "settings",
+  );
+  useEffect(() => {
+    if (choice === "allowed") startAnalytics(choice);
+  }, [choice]);
+  useEffect(() => {
+    const open = () => setVisible(true);
+    const sync = (event: StorageEvent) => {
+      if (event.key !== ANALYTICS_CHOICE_KEY && event.key !== null) return;
+      const next = storedChoice();
+      setChoice(next);
+      setVisible(!next);
+      if (next !== "allowed" && stopAnalytics()) location.reload();
+    };
+    window.addEventListener(COOKIE_SETTINGS_EVENT, open);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(COOKIE_SETTINGS_EVENT, open);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+  const choose = (next: Exclude<AnalyticsChoice, null>) => {
+    saveAnalyticsChoice(next);
+    setChoice(next);
+    setVisible(false);
+    const url = new URL(location.href);
+    if (url.searchParams.has("cookies")) {
+      url.searchParams.delete("cookies");
+      history.replaceState(null, "", url);
     }
-  });
+    // Reload after withdrawal to stop already downloaded third-party code.
+    if (next === "denied" && stopAnalytics()) location.reload();
+  };
   if (!visible) return null;
   return (
-    <aside className="cookie-notice" aria-label="Технические cookies">
+    <aside
+      className="cookie-notice analytics-notice"
+      aria-label="Настройки cookies"
+    >
       <p>
-        Используем технические cookies для оформления заказа и входа
-        сотрудников. <a href="/legal/cookies">Подробнее</a>
+        Технические cookies нужны для покупки. С вашего согласия Яндекс Метрика
+        поможет нам считать посещения афиши. Отказ не влияет на покупку.{" "}
+        <a href="/legal/cookies">Cookies</a> ·{" "}
+        <a href="/legal/privacy">Обработка данных</a>
       </p>
-      <button
-        type="button"
-        className="button secondary"
-        onClick={() => {
-          setVisible(false);
-          try {
-            sessionStorage.setItem(noticeKey, "seen");
-          } catch {
-            /* Closing also works without browser storage. */
-          }
-        }}
-      >
-        Понятно
-      </button>
+      <div className="cookie-actions">
+        <button
+          type="button"
+          className="button secondary"
+          onClick={() => choose("denied")}
+        >
+          Только необходимые
+        </button>
+        <button
+          type="button"
+          className="button secondary"
+          onClick={() => choose("allowed")}
+        >
+          Разрешить аналитику
+        </button>
+      </div>
     </aside>
   );
 }

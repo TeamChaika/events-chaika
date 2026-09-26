@@ -146,10 +146,21 @@ export async function createApp({
         ? {
             directives: {
               defaultSrc: ["'self'"],
-              scriptSrc: ["'self'"],
+              scriptSrc: [
+                "'self'",
+                (req) => (req.path === "/" ? "https://mc.yandex.ru" : ""),
+              ],
               styleSrc: ["'self'", "'unsafe-inline'"],
-              imgSrc: ["'self'", "data:", "blob:"],
-              connectSrc: ["'self'"],
+              imgSrc: [
+                "'self'",
+                "data:",
+                "blob:",
+                (req) => (req.path === "/" ? "https://mc.yandex.ru" : ""),
+              ],
+              connectSrc: [
+                "'self'",
+                (req) => (req.path === "/" ? "https://mc.yandex.ru" : ""),
+              ],
               fontSrc: ["'self'"],
               objectSrc: ["'none'"],
               frameAncestors: ["'none'"],
