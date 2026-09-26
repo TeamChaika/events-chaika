@@ -3104,27 +3104,66 @@ td .diagnostic {
   z-index: 35;
   right: 24px;
   bottom: 24px;
-  width: min(540px, calc(100% - 48px));
-  max-width: 540px;
+  width: min(420px, calc(100% - 48px));
+  max-width: 420px;
   margin: 0;
+  padding: 22px 20px 18px;
   flex-direction: column;
   align-items: stretch;
-  gap: 12px;
-  box-shadow: 0 8px 40px #0009;
+  gap: 14px;
+  border: 1px solid #ffffff0b;
+  border-radius: 12px;
+  background: #242424;
+  box-shadow: 0 8px 28px #0005;
 }
 .public-app .cookie-notice.analytics-notice p,
 .public-app .cookie-notice.analytics-notice .button {
-  font-size: 12px;
+  font-size: 13px;
+}
+.public-app .cookie-notice.analytics-notice p {
+  padding-right: 18px;
+  color: #eee;
+  line-height: 1.5;
+}
+.analytics-notice a {
+  color: inherit;
+  text-underline-offset: 2px;
+}
+.cookie-close {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #aaa;
+}
+.cookie-close:hover {
+  color: #fff;
+  background: #ffffff08;
 }
 .cookie-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
 }
-.cookie-actions .button {
-  flex: 1 1 190px;
+.public-app .cookie-notice .cookie-accept {
+  flex: 0 1 auto;
   min-width: 0;
+  min-height: 40px;
+  padding: 8px 20px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+  color: #171717;
+  font-weight: 500;
   white-space: normal;
+}
+.public-app .cookie-notice .cookie-accept:hover {
+  background: #e8e8e8;
 }
 @media screen and (max-width: 800px),
   screen and (max-width: 950px) and (max-height: 500px) {
@@ -3132,13 +3171,12 @@ td .diagnostic {
     right: 12px;
     bottom: calc(88px + env(safe-area-inset-bottom, 0px));
     width: calc(100% - 24px);
-    padding: 12px;
+    padding: 20px 18px 16px;
     max-height: calc(100svh - 112px - env(safe-area-inset-bottom, 0px));
     overflow-y: auto;
   }
-  .cookie-actions .button {
-    flex-basis: 130px;
-    padding-inline: 8px;
+  .public-app .cookie-notice .cookie-accept {
+    min-height: 44px;
   }
 }
 

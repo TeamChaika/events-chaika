@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { ArrowLeft, FileText } from "lucide-react";
+import { ArrowLeft, FileText, X } from "lucide-react";
 import { api } from "./types";
 import { Brand, ErrorNotice, Spinner } from "./ui";
 import "./legal.css";
@@ -111,23 +111,24 @@ export function CookieNotice() {
       className="cookie-notice analytics-notice"
       aria-label="Настройки cookies"
     >
+      <button
+        type="button"
+        className="cookie-close"
+        aria-label="Только необходимые"
+        title="Только необходимые cookies — закрыть"
+        onClick={() => choose("denied")}
+      >
+        <X size={16} strokeWidth={1.25} aria-hidden="true" />
+      </button>
       <p>
-        Технические cookies нужны для покупки. С вашего согласия Яндекс Метрика
-        поможет нам считать посещения афиши. Отказ не влияет на покупку.{" "}
-        <a href="/legal/cookies">Cookies</a> ·{" "}
-        <a href="/legal/privacy">Обработка данных</a>
+        Сайт использует cookies для работы. С вашего согласия Яндекс Метрика
+        собирает статистику посещений.{" "}
+        <a href="/legal/cookies">Подробнее об использовании cookies.</a>
       </p>
       <div className="cookie-actions">
         <button
           type="button"
-          className="button secondary"
-          onClick={() => choose("denied")}
-        >
-          Только необходимые
-        </button>
-        <button
-          type="button"
-          className="button secondary"
+          className="button cookie-accept"
           onClick={() => choose("allowed")}
         >
           Разрешить аналитику
