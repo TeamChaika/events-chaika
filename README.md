@@ -67,6 +67,8 @@ npm start
 
 ## Проверки и структура
 
+Панель продаж и коротких ссылок для СММ/PR: `/team`. Настройка Telegram, выдача доступа и правила учёта источников описаны в [docs/TEAM-MINIAPP.md](docs/TEAM-MINIAPP.md).
+
 ```sh
 npm test
 npm run build

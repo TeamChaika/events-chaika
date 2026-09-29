@@ -59,7 +59,7 @@ export function telegramOrderText(order, event, tickets, sms, origin) {
           .map((t) => `Билет ${t.ordinal}: ${origin}/ticket/${t.code}`)
           .join("\n")
       : "";
-  return `${event.title}\n${order.first_name} ${order.last_name}\n${order.phone}\nБилетов: ${order.quantity} · ${(order.total / 100).toLocaleString("ru-RU")} ₽\nСпособ: ${{ sbp: "СБП", cash: "Наличные", invite: "Пригласительный" }[order.method] || order.method}\nСтатус: ${status}\n${tickets.length ? `Билеты выпущены: ${tickets.length}` : "Билеты ещё не выпущены"}\n${smsStatus}\nЗаказ: ${order.id.slice(0, 8)}${links}`;
+  return `${event.title}\n${order.first_name} ${order.last_name}\n${order.phone}\nБилетов: ${order.quantity} · ${(order.total / 100).toLocaleString("ru-RU")} ₽\nСпособ: ${{ sbp: "СБП", cash: "Наличные", invite: "Пригласительный" }[order.method] || order.method}\nСтатус: ${status}\n${tickets.length ? `Билеты выпущены: ${tickets.length}` : "Билеты ещё не выпущены"}\n${smsStatus}\nИсточник: ${order.source_label || "Не определён"}${order.source_path ? ` · ${order.source_path}` : ""}\nЗаказ: ${order.id.slice(0, 8)}${links}`;
 }
 export async function deliver(job, order, event, tickets, origin, sms) {
   const link = `${origin}/order/${order.access_token}`;

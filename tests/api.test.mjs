@@ -1823,7 +1823,7 @@ test("group entry validates ticket mode, payment and selected event before chang
   );
 });
 
-test("production CSP permits the counter only on the public homepage", async (t) => {
+test("production CSP separates public posters, private pages and the Telegram panel", async (t) => {
   const saved = Object.fromEntries(
     ["NODE_ENV", "ADMIN_PASSWORD", "SCANNER_PASSWORD"].map((k) => [
       k,
@@ -1842,6 +1842,8 @@ test("production CSP permits the counter only on the public homepage", async (t)
     });
     for (const path of [
       "/",
+      "/moon/sunset-tg",
+      "/team",
       "/ticket/test",
       "/order/test",
       "/admin",
@@ -1852,9 +1854,21 @@ test("production CSP permits the counter only on the public homepage", async (t)
       const response = await fetch(h.base + path);
       const policy = response.headers.get("content-security-policy");
       assert.ok(policy, path);
-      assert.equal(policy.includes("https://mc.yandex.ru"), path === "/", path);
+      assert.equal(
+        policy.includes("https://mc.yandex.ru"),
+        path === "/" || path === "/moon/sunset-tg",
+        path,
+      );
+      assert.equal(
+        policy.includes("https://telegram.org"),
+        path === "/team",
+        path,
+      );
       assert.ok(!policy.includes("unsafe-eval"));
-      assert.ok(policy.includes("frame-ancestors 'none'"));
+      if (path === "/team") {
+        assert.ok(policy.includes("frame-ancestors https://web.telegram.org"));
+        assert.equal(response.headers.get("x-frame-options"), null);
+      } else assert.ok(policy.includes("frame-ancestors 'none'"));
       assert.ok(!policy.includes(" null"));
     }
   } finally {

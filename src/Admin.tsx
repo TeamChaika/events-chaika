@@ -50,6 +50,8 @@ type AdminOrder = {
   title: string;
   access_token: string;
   diagnostic: string | null;
+  source_label: string | null;
+  source_path: string | null;
   is_test: number;
   voided_at: string | null;
   void_reason: string | null;
@@ -235,6 +237,11 @@ export function Admin() {
           })}
         </nav>
         <div className="sidebar-bottom">
+          {role === "admin" && (
+            <a href="/team">
+              Продажи и источники <ArrowUpRight size={16} />
+            </a>
+          )}
           <a href="/" target="_blank" rel="noreferrer">
             Открыть сайт <ArrowUpRight size={16} />
           </a>
@@ -471,6 +478,9 @@ export function Admin() {
                               </strong>
                               <small>{o.phone}</small>
                               <small>{o.email}</small>
+                              {o.source_label && (
+                                <small>Источник: {o.source_label}</small>
+                              )}
                             </td>
                             <td>
                               {o.title}

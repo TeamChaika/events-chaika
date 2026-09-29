@@ -1,0 +1,559 @@
+.team-app {
+  --team-line: #2c2d32;
+  --team-muted: #a5a6b0;
+  max-width: 820px;
+  margin: 0 auto;
+  padding: calc(24px + var(--tg-content-safe-area-inset-top, 0px)) 20px
+    calc(32px + env(safe-area-inset-bottom, 0px));
+  background: #101113;
+  color: #f4f4f6;
+  min-height: 100svh;
+  font-family: Manrope, sans-serif;
+  font-size: 14px;
+  color-scheme: dark;
+}
+body:has(.team-app) {
+  background: #101113;
+}
+.team-app * {
+  box-sizing: border-box;
+}
+.team-app h1,
+.team-app h2,
+.team-app h3,
+.team-app p {
+  margin: 0;
+}
+.team-app h1 {
+  font-size: clamp(23px, 6vw, 32px);
+  letter-spacing: -1px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.team-app h2 {
+  font-size: 19px;
+  letter-spacing: -0.4px;
+}
+.team-app h3 {
+  font-size: 15px;
+  font-weight: 700;
+}
+.team-app button,
+.team-app input,
+.team-app select {
+  font: inherit;
+}
+.team-app button {
+  cursor: pointer;
+}
+.team-app button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.team-app button:focus-visible,
+.team-app a:focus-visible {
+  outline: 2px solid #ff796b;
+  outline-offset: 4px;
+}
+.team-header {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+.team-eyebrow {
+  font-size: 9px;
+  letter-spacing: 2.2px;
+  color: #b5b6be;
+  margin-bottom: 10px !important;
+  font-weight: 700;
+}
+.team-avatar {
+  flex: none;
+  background: #30201f;
+  color: #ffc7bf;
+  border: 1px solid #59312d;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 19px;
+}
+.team-event {
+  padding: 16px;
+  background: #1b1c20;
+  border: 1px solid var(--team-line);
+  border-radius: 16px;
+}
+.team-event label {
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  color: var(--team-muted);
+  display: block;
+  margin-bottom: 8px;
+}
+.team-app select,
+.team-app input {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid #393a43;
+  border-radius: 10px;
+  background: #151619;
+  color: #f4f4f6;
+  padding: 12px;
+  min-height: 44px;
+}
+.team-app select:focus,
+.team-app input:focus {
+  outline: 2px solid #ff796b;
+  outline-offset: 2px;
+}
+.team-event select {
+  border: 0;
+  padding: 0 24px 0 0;
+  background: transparent;
+  font-size: 15px;
+  font-weight: 600;
+  min-height: 30px;
+}
+.team-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--team-line);
+  margin: 22px 0;
+}
+.team-tabs button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 1;
+  background: transparent;
+  color: var(--team-muted);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 14px 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.team-tabs button[aria-current] {
+  color: #fff;
+  border-bottom-color: #f45546;
+}
+.team-dates {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.team-dates label {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--team-muted);
+}
+.team-dates input {
+  margin-top: 7px;
+  padding: 10px 7px;
+  font-size: 12px;
+}
+.team-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--team-line);
+  background: #202126;
+  color: #e4e5e9;
+  border-radius: 11px;
+}
+.team-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.team-metric {
+  border: 1px solid var(--team-line);
+  border-radius: 16px;
+  background: #1b1c20;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.team-metric > span {
+  font-size: 12px;
+  color: #c0c1ca;
+}
+.team-metric strong {
+  font-size: 32px;
+  letter-spacing: -1px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.team-metric.featured {
+  grid-column: 1/-1;
+  background:
+    radial-gradient(ellipse at 100% 0, #6e2825 0, transparent 70%), #261b1d;
+  border-color: #68322e;
+}
+.team-metric.featured strong {
+  font-size: 58px;
+}
+.team-metric small {
+  font-size: 11px;
+  color: #dbbdb9;
+}
+.team-metric .team-revenue {
+  font-size: clamp(20px, 5vw, 32px);
+  overflow-wrap: anywhere;
+}
+.team-section-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin: 28px 0 15px;
+}
+.team-section-title > span {
+  color: var(--team-muted);
+}
+.team-source-result {
+  padding: 17px 0;
+  border-bottom: 1px solid var(--team-line);
+}
+.team-source-result p,
+.team-link-card > p,
+.team-member p {
+  color: var(--team-muted);
+  font-size: 11px;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+.team-source-counts {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  margin-top: 15px;
+  font-size: 12px;
+}
+.team-source-counts strong {
+  font-size: 22px;
+}
+.team-source-counts strong small {
+  font-size: 11px;
+  color: var(--team-muted);
+  font-weight: 400;
+}
+.team-source-counts > span {
+  color: var(--team-muted);
+}
+.team-source-counts > b {
+  margin-left: auto;
+  font-weight: 600;
+}
+.team-bar {
+  height: 4px;
+  background: #28292e;
+  margin-top: 14px;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.team-bar span {
+  display: block;
+  height: 100%;
+  background: #f66e5f;
+  border-radius: 3px;
+}
+.team-note {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--team-muted);
+  margin: 18px 0 !important;
+}
+.team-note svg {
+  flex: none;
+  margin-top: 3px;
+}
+.team-updated {
+  font-size: 10px;
+  color: #a5a6b0;
+  margin-top: 12px !important;
+}
+.team-primary {
+  min-height: 46px;
+  border: 1px solid #f57163;
+  background: #e95143;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px 20px;
+  border-radius: 12px;
+  font-weight: 700 !important;
+}
+.team-primary.small {
+  min-height: 40px;
+  padding: 10px 13px;
+  font-size: 12px;
+}
+.team-form {
+  background: #1b1c20;
+  border: 1px solid var(--team-line);
+  border-radius: 16px;
+  padding: 18px;
+  display: grid;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+.team-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  color: #c8c9d0;
+}
+.team-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.team-form .team-note {
+  margin: 0 !important;
+}
+.team-link-card,
+.team-member {
+  border: 1px solid var(--team-line);
+  border-radius: 14px;
+  padding: 16px;
+  background: #1b1c20;
+  margin: 12px 0;
+}
+.team-link-heading {
+  display: flex;
+  gap: 8px;
+  align-items: start;
+  justify-content: space-between;
+}
+.team-badge {
+  color: #98ddba;
+  background: #21392e;
+  font-size: 9px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.team-badge.inactive {
+  color: #bbb;
+  background: #333;
+}
+.team-link-url {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  background: #121316;
+  border-radius: 10px;
+  padding: 4px 4px 4px 12px;
+}
+.team-link-url > a {
+  color: #fdaca3;
+  font-size: 12px;
+  word-break: break-word;
+  flex: 1;
+  line-height: 1.7;
+}
+.team-link-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+  margin-top: 15px;
+  color: var(--team-muted);
+}
+.team-link-footer small {
+  font-size: 10px;
+}
+.team-link-footer button {
+  border: 0;
+  background: none;
+  color: #b6b7c0;
+  font-size: 11px;
+  text-decoration: underline;
+  padding: 9px 0;
+}
+.team-success {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #203a2c;
+  border: 1px solid #3a654b;
+  border-radius: 12px;
+  padding: 14px;
+  color: #c5f8d9;
+  margin-bottom: 15px;
+  font-size: 12px;
+}
+.team-success > div {
+  min-width: 0;
+  flex: 1;
+}
+.team-success strong {
+  display: block;
+  overflow-wrap: anywhere;
+  margin-top: 6px;
+  font-size: 11px;
+}
+.team-member p {
+  margin-bottom: 14px;
+}
+.team-member-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.team-member-actions button {
+  min-height: 40px;
+  border: 1px solid #494a53;
+  background: #26272e;
+  color: #eee;
+  border-radius: 8px;
+  font-size: 11px;
+  padding: 9px 12px;
+}
+.team-empty {
+  padding: 38px 20px;
+  text-align: center;
+  border: 1px dashed #383941;
+  border-radius: 14px;
+  margin: 18px 0;
+  color: var(--team-muted);
+}
+.team-empty > svg {
+  margin: 0 auto 15px;
+  width: 26px;
+  height: 26px;
+  color: #ef8478;
+}
+.team-empty h3 {
+  color: #e7e7ed;
+}
+.team-empty p {
+  font-size: 12px;
+  line-height: 1.8;
+  margin-top: 10px;
+}
+.team-error {
+  background: #3c2326;
+  border: 1px solid #81454b;
+  color: #ffd3d7;
+  padding: 14px;
+  border-radius: 12px;
+  line-height: 1.7;
+  font-size: 13px;
+  margin: 15px 0;
+}
+.team-footer {
+  text-align: center;
+  margin-top: 36px;
+  padding-top: 22px;
+  border-top: 1px solid var(--team-line);
+  color: #999aa4;
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+.team-welcome {
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: start;
+  gap: 18px;
+}
+.team-welcome h1 {
+  font-size: 42px;
+}
+.team-welcome > p:not(.team-eyebrow) {
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--team-muted);
+}
+.team-mark {
+  width: 60px;
+  height: 60px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #613530;
+  background: #301e20;
+  color: #ff9b8f;
+  border-radius: 18px;
+  margin-bottom: 14px;
+}
+.team-text-link {
+  color: #c0c1cc;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  border: 0;
+  background: none;
+  padding: 10px 0;
+}
+.team-welcome .team-error {
+  width: 100%;
+}
+@media (min-width: 600px) {
+  .team-app {
+    padding-left: 32px;
+    padding-right: 32px;
+  }
+  .team-metrics {
+    grid-template-columns: 1.3fr 1fr 1.5fr;
+  }
+  .team-metric.featured {
+    grid-column: auto;
+  }
+  .team-metric.featured strong {
+    font-size: 42px;
+  }
+  .team-metric {
+    padding: 22px;
+  }
+  .team-tabs {
+    max-width: 480px;
+  }
+  .team-dates {
+    max-width: 460px;
+  }
+}
+@media (max-width: 360px) {
+  .team-app {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+  .team-tabs button {
+    gap: 5px;
+    font-size: 12px;
+  }
+  .team-form-row {
+    grid-template-columns: 1fr;
+  }
+  .team-metric {
+    padding: 15px;
+  }
+  .team-source-counts {
+    gap: 8px;
+    font-size: 11px;
+  }
+  .team-source-counts strong {
+    font-size: 18px;
+  }
+}

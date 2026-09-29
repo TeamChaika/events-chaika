@@ -121,8 +121,8 @@ export function CookieNotice() {
         <X size={16} strokeWidth={1.25} aria-hidden="true" />
       </button>
       <p>
-        Сайт использует cookies для работы. С вашего согласия Яндекс Метрика
-        собирает статистику посещений.{" "}
+        Сайт использует cookies для работы. С вашего согласия мы учитываем
+        источники покупок, а Яндекс Метрика — посещения.{" "}
         <a href="/legal/cookies">Подробнее об использовании cookies.</a>
       </p>
       <div className="cookie-actions">

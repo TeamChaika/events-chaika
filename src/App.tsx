@@ -18,6 +18,12 @@ import {
   LoaderCircle,
 } from "lucide-react";
 import { Admin } from "./Admin";
+import { Team } from "./Team";
+import {
+  orderAttribution,
+  rememberSource,
+  watchAttributionChoice,
+} from "./attribution";
 import {
   api,
   money,
@@ -103,8 +109,13 @@ function Home() {
   const [artworkReady, setArtworkReady] = useState(false);
   const [showIntro, setShowIntro] = useState(true);
   const [revealing, setRevealing] = useState(false);
-  const selected = new URLSearchParams(location.search).get("event");
-  const event = events.find((e) => e.id === selected) || events[0];
+  const [selected, setSelected] = useState(
+    new URLSearchParams(location.search).get("event"),
+  );
+  const pathParts = location.pathname.split("/").filter(Boolean);
+  const referral = pathParts.length === 2;
+  const event = selected ? events.find((e) => e.id === selected) : events[0];
+  useEffect(watchAttributionChoice, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -118,9 +129,31 @@ function Home() {
     Promise.all([
       api<EventData[]>("/events", { signal: controller.signal }),
       api<Config>("/config", { signal: controller.signal }),
+      referral
+        ? api<{ event_id: string; link_id: string }>(
+            "/promotion/resolve?" +
+              new URLSearchParams({
+                event: pathParts[0],
+                source: pathParts[1],
+              }),
+            { signal: controller.signal },
+          )
+        : Promise.resolve(null),
     ])
-      .then(([e, c]) => {
+      .then(([e, c, source]) => {
         if (!active) return;
+        if (source) {
+          rememberSource(source.event_id, source.link_id);
+          setSelected(source.event_id);
+          history.replaceState(
+            history.state,
+            "",
+            "/?" + new URLSearchParams({ event: source.event_id }),
+          );
+        }
+        const wanted = source?.event_id || selected;
+        if (wanted && !e.some((event) => event.id === wanted))
+          throw new Error("Мероприятие не найдено или снято с публикации.");
         setEvents(e);
         setConfig(c);
       })
@@ -404,6 +437,7 @@ function Checkout({
           ...Object.fromEntries(form),
           event_id: event.id,
           quantity,
+          attribution: orderAttribution(event.id),
           acceptances: Object.fromEntries(
             ["terms", "consent", "marketing"].map((slug) => [
               slug,
@@ -925,7 +959,9 @@ function SingleTicket() {
 }
 export default function App() {
   const path = location.pathname;
-  return path === "/legal" || path.startsWith("/legal/") ? (
+  return path === "/team" ? (
+    <Team />
+  ) : path === "/legal" || path.startsWith("/legal/") ? (
     <LegalPage />
   ) : path.startsWith("/unsubscribe/") ? (
     <UnsubscribePage />

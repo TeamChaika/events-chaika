@@ -19,6 +19,11 @@ import { checkSmsAero } from "./smsaero.mjs";
 import { telegram } from "./telegram.mjs";
 import { legalService } from "./legal.mjs";
 import { marketingService } from "./marketing.mjs";
+import {
+  promotionService,
+  registerTeamRoutes,
+  isPromotionPath,
+} from "./promotion.mjs";
 
 const hash = (s) => createHash("sha256").update(s).digest("hex");
 const same = (a, b) =>
@@ -110,6 +115,7 @@ export async function createApp({
     throw new Error("DATABASE_URL is required on ephemeral hosting");
   const store = await openStore(dbPath, databaseUrl);
   const marketing = marketingService(store);
+  const promotion = promotionService(store, origin);
   let legal;
   try {
     legal = await legalService(store, { demo, documents: legalDocuments });
@@ -140,6 +146,10 @@ export async function createApp({
   if (!Number.isInteger(proxyHops) || proxyHops < 0 || proxyHops > 3)
     throw new Error("TRUST_PROXY_HOPS must be 0..3");
   if (proxyHops) app.set("trust proxy", proxyHops);
+  // A short source link renders the same public poster as the homepage.
+  // Its document policy survives the client-side canonical URL replacement.
+  const analyticsSource = (req) =>
+    req.path === "/" || isPromotionPath(req.path) ? "https://mc.yandex.ru" : "";
   app.use(
     helmet({
       contentSecurityPolicy: production
@@ -148,22 +158,20 @@ export async function createApp({
               defaultSrc: ["'self'"],
               scriptSrc: [
                 "'self'",
-                (req) => (req.path === "/" ? "https://mc.yandex.ru" : ""),
+                analyticsSource,
+                (req) => (req.path === "/team" ? "https://telegram.org" : ""),
               ],
               styleSrc: ["'self'", "'unsafe-inline'"],
-              imgSrc: [
-                "'self'",
-                "data:",
-                "blob:",
-                (req) => (req.path === "/" ? "https://mc.yandex.ru" : ""),
-              ],
-              connectSrc: [
-                "'self'",
-                (req) => (req.path === "/" ? "https://mc.yandex.ru" : ""),
-              ],
+              imgSrc: ["'self'", "data:", "blob:", analyticsSource],
+              connectSrc: ["'self'", analyticsSource],
               fontSrc: ["'self'"],
               objectSrc: ["'none'"],
-              frameAncestors: ["'none'"],
+              frameAncestors: [
+                (req) =>
+                  req.path === "/team"
+                    ? "https://web.telegram.org https://*.web.telegram.org"
+                    : "'none'",
+              ],
               baseUri: ["'self'"],
             },
           }
@@ -172,6 +180,13 @@ export async function createApp({
     }),
   );
   const normalJson = express.json({ limit: "24kb" });
+  app.use((req, res, next) => {
+    if (req.path === "/team") {
+      res.removeHeader("X-Frame-Options");
+      res.set("Cache-Control", "no-store");
+    }
+    next();
+  });
   app.use((req, res, next) =>
     req.path === "/api/admin/media" ? next() : normalJson(req, res, next),
   );
@@ -263,6 +278,10 @@ export async function createApp({
       setCookie(res, "buyer", token(), 30 * 86400000);
     res.json({ demo, paymentMode: mode(), paymentReady: availability() });
   });
+  app.get("/api/promotion/resolve", async (req, res) =>
+    res.json(await promotion.resolve(req.query.event, req.query.source)),
+  );
+  registerTeamRoutes(app, { store, promotion, authLimit });
   app.get("/api/events", async (_req, res) =>
     res.json(
       await Promise.all(
@@ -392,7 +411,11 @@ export async function createApp({
             : null,
       };
     const requestHash = hash(
-      JSON.stringify({ input, acceptances: acceptanceInput }),
+      JSON.stringify({
+        input,
+        acceptances: acceptanceInput,
+        ...(req.body.attribution ? { attribution: req.body.attribution } : {}),
+      }),
     );
     let fresh = false;
     const o = await store.transaction(async () => {
@@ -437,6 +460,7 @@ export async function createApp({
         idempotency: key,
         request_hash: requestHash,
         webhook_token: token(),
+        ...(await promotion.attribution(req.body.attribution, input.event_id)),
       };
       const keys = Object.keys(values);
       await store.run(
@@ -585,7 +609,7 @@ export async function createApp({
     );
     if (req.staff.role === "door") return res.json({ events });
     const orders = await store.all(
-      "SELECT o.id,o.event_id,o.first_name,o.last_name,o.phone,o.email,o.quantity,o.total,o.status,o.method,o.mode,o.is_test,o.voided_at,o.void_reason,o.created_at,o.paid_at,o.checked_at,o.diagnostic,o.access_token,e.title,(SELECT COUNT(*) FROM tickets t WHERE t.order_id=o.id AND t.used_at IS NOT NULL) AS checked_count FROM orders o JOIN events e ON e.id=o.event_id ORDER BY o.created_at DESC LIMIT 500",
+      "SELECT o.id,o.event_id,o.first_name,o.last_name,o.phone,o.email,o.quantity,o.total,o.status,o.method,o.mode,o.is_test,o.voided_at,o.void_reason,o.created_at,o.paid_at,o.checked_at,o.diagnostic,o.access_token,o.source_label,o.source_path,e.title,(SELECT COUNT(*) FROM tickets t WHERE t.order_id=o.id AND t.used_at IS NOT NULL) AS checked_count FROM orders o JOIN events e ON e.id=o.event_id ORDER BY o.created_at DESC LIMIT 500",
     );
     const attendance = await store.get(
       "SELECT COUNT(*) AS sold,COALESCE(SUM(CASE WHEN t.used_at IS NOT NULL THEN 1 ELSE 0 END),0) AS checked FROM tickets t JOIN orders o ON o.id=t.order_id WHERE o.status='paid' AND o.is_test=0 AND (o.voided_at IS NULL OR t.used_at IS NOT NULL) AND (?=1 OR o.mode='live')",

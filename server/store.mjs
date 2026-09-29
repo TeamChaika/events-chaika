@@ -50,6 +50,21 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
       document_hash TEXT NOT NULL REFERENCES legal_documents(hash), accepted_at TEXT NOT NULL,
       buyer_session TEXT NOT NULL, unsubscribe_token TEXT NOT NULL UNIQUE, withdrawn_at TEXT);
     CREATE INDEX IF NOT EXISTS sms_consents_phone ON sms_consents(phone,withdrawn_at);
+    CREATE TABLE IF NOT EXISTS team_members (
+      telegram_id TEXT PRIMARY KEY, display_name TEXT NOT NULL, username TEXT NOT NULL,
+      role TEXT NOT NULL CHECK(role IN ('owner','editor','viewer')),
+      status TEXT NOT NULL CHECK(status IN ('pending','active','blocked')), created_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS team_sessions (
+      id TEXT PRIMARY KEY, telegram_id TEXT NOT NULL REFERENCES team_members(telegram_id), expires_at BIGINT NOT NULL);
+    CREATE TABLE IF NOT EXISTS promotion_events (
+      event_id TEXT PRIMARY KEY REFERENCES events(id), slug TEXT NOT NULL UNIQUE);
+    CREATE TABLE IF NOT EXISTS promotion_sources (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, normalized_name TEXT NOT NULL UNIQUE,
+      created_by TEXT NOT NULL, created_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS promotion_links (
+      id TEXT PRIMARY KEY, event_id TEXT NOT NULL REFERENCES events(id), source_id TEXT NOT NULL REFERENCES promotion_sources(id),
+      slug TEXT NOT NULL, placement TEXT NOT NULL DEFAULT '', active INTEGER NOT NULL DEFAULT 1,
+      created_by TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(event_id,slug));
     CREATE INDEX IF NOT EXISTS orders_event ON orders(event_id,status);
     CREATE INDEX IF NOT EXISTS tickets_order ON tickets(order_id);`;
   try {
@@ -90,6 +105,11 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
             "legal_documents",
             "order_acceptances",
             "sms_consents",
+            "team_members",
+            "team_sessions",
+            "promotion_events",
+            "promotion_sources",
+            "promotion_links",
           ]) {
             await db.exec(`ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY; ALTER TABLE ${table} FORCE ROW LEVEL SECURITY;
               DROP POLICY IF EXISTS events_backend ON ${table};
@@ -114,6 +134,12 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
         ["is_test", "INTEGER NOT NULL DEFAULT 0"],
         ["voided_at", "TEXT"],
         ["void_reason", "TEXT"],
+        ["source_link_id", "TEXT REFERENCES promotion_links(id)"],
+        ["first_source_link_id", "TEXT REFERENCES promotion_links(id)"],
+        ["source_label", "TEXT"],
+        ["source_path", "TEXT"],
+        ["source_consent_version", "TEXT"],
+        ["source_consent_at", "TEXT"],
       ];
       const existingOrders =
         db.kind === "sqlite" ? await db.all("PRAGMA table_info(orders)") : [];

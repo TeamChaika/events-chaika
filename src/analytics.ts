@@ -1,7 +1,8 @@
 export const METRIKA_ID = 113085427;
 export const ANALYTICS_CHOICE_KEY = "chaika.analytics-choice.v1";
-export const ANALYTICS_POLICY_VERSION = "2026-09-26.2";
+export const ANALYTICS_POLICY_VERSION = "2026-09-29.1";
 export const COOKIE_SETTINGS_EVENT = "chaika:cookie-settings";
+export const ANALYTICS_CHOICE_EVENT = "chaika:analytics-choice";
 const choiceLifetime = 180 * 86400000;
 export type AnalyticsChoice = "allowed" | "denied" | null;
 
@@ -38,6 +39,7 @@ export function saveAnalyticsChoice(choice: Exclude<AnalyticsChoice, null>) {
   } catch {
     // The current page still respects the choice when storage is blocked.
   }
+  window.dispatchEvent(new Event(ANALYTICS_CHOICE_EVENT));
 }
 
 export function analyticsPageUrl(href: string): string | null {
