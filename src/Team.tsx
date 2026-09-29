@@ -25,6 +25,8 @@ type Member = {
   username?: string;
   role: "owner" | "editor" | "viewer";
   status: string;
+  access_group_id?: string | null;
+  group_access_enabled?: boolean;
 };
 type Event = {
   id: string;
@@ -697,9 +699,9 @@ export function Team() {
         <section aria-label="Доступ сотрудников">
           <h2>Команда</h2>
           <p className="team-note">
-            Сотрудник открывает Mini App и попадает в этот список. Разрешите ему
-            просмотр или создание ссылок. Общая статистика доступна всем
-            одобренным сотрудникам.
+            {member.group_access_enabled
+              ? "Участники рабочей группы получают доступ СММ / PR при первом входе. Здесь можно ограничить роль или отключить доступ отдельному сотруднику."
+              : "Сотрудник открывает Mini App и попадает в этот список. Разрешите ему просмотр или создание ссылок. Общая статистика доступна всем одобренным сотрудникам."}
           </p>
           {members.map((value) => (
             <article className="team-member" key={value.telegram_id}>
@@ -713,6 +715,7 @@ export function Team() {
                     blocked: "Доступ отключён",
                   }[value.status]
                 }
+                {value.access_group_id && " · через рабочую группу"}
               </p>
               {value.role === "owner" ? (
                 <span className="team-badge">Владелец</span>

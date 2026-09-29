@@ -6,6 +6,7 @@ import {
 } from "node:crypto";
 import { z } from "zod";
 import { AppError, token } from "./store.mjs";
+import { telegram } from "./telegram.mjs";
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 export const ATTRIBUTION_CONSENT_VERSION = "2026-09-29.1";
@@ -332,13 +333,63 @@ export function promotionService(store, origin) {
   };
 }
 
-export function registerTeamRoutes(app, { store, promotion, authLimit }) {
+export function createGroupAccess(
+  chatId = "",
+  client = telegram,
+  clock = Date.now,
+) {
+  if (
+    chatId &&
+    (!/^-\d+$/.test(chatId) || !Number.isSafeInteger(Number(chatId)))
+  )
+    throw new Error(
+      "TELEGRAM_MINIAPP_GROUP_ID must be a negative Telegram chat ID",
+    );
+  const cache = new Map();
+  return {
+    chatId,
+    async check(userId, fresh = false) {
+      if (!chatId) return false;
+      const known = cache.get(userId);
+      if (!fresh && known?.expires > clock()) return known.member;
+      // No stale-allow fallback: after expiration a Telegram failure denies access.
+      cache.delete(userId);
+      try {
+        const member = await client.isGroupMember(chatId, userId);
+        if (typeof member !== "boolean") throw new Error("invalid_membership");
+        if (cache.size >= 512) cache.delete(cache.keys().next().value);
+        cache.set(userId, { member, expires: clock() + 60000 });
+        return member;
+      } catch {
+        throw new AppError(
+          503,
+          "Не удалось проверить участие в группе Telegram. Повторите чуть позже.",
+        );
+      }
+    },
+  };
+}
+
+export function registerTeamRoutes(
+  app,
+  { store, promotion, authLimit, groupAccess = createGroupAccess() },
+) {
   app.post("/api/team/auth", authLimit, async (req, res) => {
     const user = verifyTelegramData(
       req.body?.initData,
       process.env.TELEGRAM_BOT_TOKEN,
     );
     const owner = user.id === process.env.TELEGRAM_MINIAPP_OWNER_ID;
+    const previous = await store.get(
+      "SELECT role,status,access_group_id FROM team_members WHERE telegram_id=?",
+      user.id,
+    );
+    const checkGroup =
+      !owner &&
+      previous?.role !== "owner" &&
+      previous?.status !== "blocked" &&
+      (previous?.status !== "active" || previous?.access_group_id);
+    const inGroup = checkGroup && (await groupAccess.check(user.id, true));
     const member = await store.transaction(async () => {
       await store.run(
         "INSERT OR IGNORE INTO team_members(telegram_id,display_name,username,role,status,created_at) VALUES (?,?,?,?,?,?)",
@@ -360,8 +411,35 @@ export function registerTeamRoutes(app, { store, promotion, authLimit }) {
           "UPDATE team_members SET role='owner',status='active' WHERE telegram_id=?",
           user.id,
         );
+      else if (inGroup) {
+        // Re-read permissions in the transaction so a concurrent manual block wins.
+        const changed = await store.run(
+          "UPDATE team_members SET status='active',access_group_id=? WHERE telegram_id=? AND role<>'owner' AND status<>'blocked' AND (status='pending' OR access_group_id IS NOT NULL)",
+          groupAccess.chatId,
+          user.id,
+        );
+        if (
+          changed.changes &&
+          (previous?.status !== "active" || !previous?.access_group_id)
+        )
+          await store.audit(
+            "team_group_access_granted",
+            user.id,
+            "telegram_group:" + groupAccess.chatId,
+          );
+      } else if (checkGroup) {
+        const changed = await store.run(
+          "UPDATE team_members SET status='pending' WHERE telegram_id=? AND access_group_id IS NOT NULL AND status='active'",
+          user.id,
+        );
+        if (changed.changes)
+          await store.run(
+            "DELETE FROM team_sessions WHERE telegram_id=?",
+            user.id,
+          );
+      }
       return store.get(
-        "SELECT telegram_id,display_name,username,role,status FROM team_members WHERE telegram_id=?",
+        "SELECT telegram_id,display_name,username,role,status,access_group_id FROM team_members WHERE telegram_id=?",
         user.id,
       );
     });
@@ -381,7 +459,10 @@ export function registerTeamRoutes(app, { store, promotion, authLimit }) {
       user.id,
       Date.now() + 12 * 3600000,
     );
-    res.json({ token: value, member });
+    res.json({
+      token: value,
+      member: { ...member, group_access_enabled: Boolean(groupAccess.chatId) },
+    });
   });
   app.use("/api/team", async (req, _res, next) => {
     if (req.staff?.role === "admin")
@@ -395,7 +476,7 @@ export function registerTeamRoutes(app, { store, promotion, authLimit }) {
       const value = (req.headers.authorization || "").replace(/^Bearer /, "");
       if (/^[a-f0-9]{48}$/.test(value))
         req.team = await store.get(
-          "SELECT m.telegram_id,m.display_name,m.username,m.role,m.status FROM team_sessions s JOIN team_members m ON m.telegram_id=s.telegram_id WHERE s.id=? AND s.expires_at>? AND m.status='active'",
+          "SELECT m.telegram_id,m.display_name,m.username,m.role,m.status,m.access_group_id FROM team_sessions s JOIN team_members m ON m.telegram_id=s.telegram_id WHERE s.id=? AND s.expires_at>? AND m.status='active'",
           digest(value),
           Date.now(),
         );
@@ -404,6 +485,16 @@ export function registerTeamRoutes(app, { store, promotion, authLimit }) {
       throw new AppError(
         401,
         "Откройте панель через Telegram или войдите как администратор сайта",
+      );
+    if (
+      req.team.role !== "owner" &&
+      req.team.access_group_id &&
+      (req.team.access_group_id !== groupAccess.chatId ||
+        !(await groupAccess.check(req.team.telegram_id)))
+    )
+      throw new AppError(
+        403,
+        "Доступ к панели открыт участникам рабочей группы Telegram",
       );
     next();
   });
@@ -415,7 +506,12 @@ export function registerTeamRoutes(app, { store, promotion, authLimit }) {
     if (req.team.role !== "owner")
       throw new AppError(403, "Доступно только владельцу");
   };
-  app.get("/api/team/me", (req, res) => res.json(req.team));
+  app.get("/api/team/me", (req, res) =>
+    res.json({
+      ...req.team,
+      group_access_enabled: Boolean(groupAccess.chatId),
+    }),
+  );
   app.get("/api/team/catalog", async (_req, res) =>
     res.json(await promotion.catalog()),
   );
@@ -459,7 +555,7 @@ export function registerTeamRoutes(app, { store, promotion, authLimit }) {
     owner(req);
     res.json(
       await store.all(
-        "SELECT telegram_id,display_name,username,role,status FROM team_members ORDER BY created_at DESC",
+        "SELECT telegram_id,display_name,username,role,status,access_group_id FROM team_members ORDER BY created_at DESC",
       ),
     );
   });

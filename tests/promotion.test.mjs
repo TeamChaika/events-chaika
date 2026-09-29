@@ -6,6 +6,7 @@ import { currentLegalDocuments } from "../server/legal.mjs";
 import {
   verifyTelegramData,
   ATTRIBUTION_CONSENT_VERSION,
+  createGroupAccess,
 } from "../server/promotion.mjs";
 
 const botToken = "12345:technical_test_secret";
@@ -32,7 +33,7 @@ const attribution = (first, last = first) => ({
   last: last.id,
   consent_version: ATTRIBUTION_CONSENT_VERSION,
 });
-async function harness(t) {
+async function harness(t, options = {}) {
   process.env.TELEGRAM_BOT_TOKEN = botToken;
   process.env.TELEGRAM_MINIAPP_OWNER_ID = "10001";
   const h = await createApp({
@@ -46,6 +47,7 @@ async function harness(t) {
       version: "test.1",
       content: `Fixture ${doc.slug}`,
     })),
+    ...options,
   });
   await h.store.run("UPDATE events SET date='2099-10-31'");
   const server = h.app.listen(0, "127.0.0.1");
@@ -413,4 +415,116 @@ test("browser admin can manage the team while scanner and cross-origin requests 
     ).status,
     403,
   );
+});
+
+test("group members receive editor access, manual restrictions and owner rights are preserved", async (t) => {
+  const groupMembers = new Set(["21001", "21002"]);
+  let unavailable = false;
+  const group = createGroupAccess("-9988", {
+    async isGroupMember(_chat, id) {
+      if (unavailable) throw Error("offline");
+      return groupMembers.has(id);
+    },
+  });
+  const h = await harness(t, { teamGroupAccess: group });
+  const staff = { id: 21001, first_name: "Участник" };
+  const editor = await h.login(staff);
+  assert.equal(editor.status, 200);
+  assert.equal(editor.body.member.role, "editor");
+  assert.equal(editor.body.member.access_group_id, "-9988");
+  assert.equal(editor.body.member.group_access_enabled, true);
+  assert.equal((await h.request("/team/stats")).status, 200);
+  assert.equal((await h.link()).status, 201);
+  assert.equal((await h.request("/team/members")).status, 403);
+  assert.equal((await h.request("/admin/overview")).status, 401);
+  const outsider = await h.login({ id: 21003, first_name: "Посторонний" });
+  assert.equal(outsider.status, 403);
+  assert.equal(outsider.body.token, undefined);
+  groupMembers.add("21003");
+  assert.equal(
+    (await h.login({ id: 21003, first_name: "Теперь участник" })).status,
+    200,
+  );
+  const owner = await h.login();
+  assert.equal(owner.body.member.role, "owner");
+  await h.request("/team/members/21001", "PATCH", {
+    role: "viewer",
+    status: "active",
+  });
+  assert.equal((await h.login(staff)).body.member.role, "viewer");
+  assert.equal((await h.link({ slug: "forbidden" })).status, 403);
+  h.setBearer(owner.body.token);
+  await h.request("/team/members/21001", "PATCH", {
+    role: "viewer",
+    status: "blocked",
+  });
+  assert.equal((await h.login(staff)).status, 403);
+  h.setBearer(editor.body.token);
+  assert.equal((await h.request("/team/stats")).status, 401);
+  unavailable = true;
+  assert.equal((await h.login()).body.member.role, "owner");
+});
+
+test("leaving the group and Telegram errors close group sessions after a bounded cache", async (t) => {
+  let at = 0,
+    present = true,
+    offline = false,
+    calls = 0;
+  const group = createGroupAccess(
+    "-9988",
+    {
+      async isGroupMember() {
+        calls++;
+        if (offline) throw Error("offline");
+        return present;
+      },
+    },
+    () => at,
+  );
+  const h = await harness(t, { teamGroupAccess: group });
+  const staff = { id: 22001, first_name: "Участник" };
+  const session = await h.login(staff);
+  assert.equal(session.status, 200);
+  assert.equal((await h.request("/team/stats")).status, 200);
+  assert.equal(calls, 1);
+  present = false;
+  at = 60001;
+  assert.equal((await h.request("/team/stats")).status, 403);
+  assert.equal((await h.login(staff)).status, 403);
+  h.setBearer(session.body.token);
+  assert.equal((await h.request("/team/stats")).status, 401);
+  present = true;
+  assert.equal((await h.login(staff)).status, 200);
+  offline = true;
+  at += 60001;
+  assert.equal((await h.request("/team/stats")).status, 503);
+  assert.equal((await h.login(staff)).status, 503);
+  offline = false;
+  assert.equal((await h.login(staff)).status, 200);
+  // A changed/disabled group must not keep an existing group grant alive.
+  group.chatId = "-7766";
+  assert.equal((await h.request("/team/stats")).status, 403);
+});
+
+test("manual approvals stay independent of group verification; successful colleagues do not exhaust login quota", async (t) => {
+  let present = false;
+  const group = createGroupAccess("-9988", {
+    async isGroupMember() {
+      return present;
+    },
+  });
+  const h = await harness(t, { teamGroupAccess: group });
+  const staff = { id: 23001, first_name: "Ручной доступ" };
+  assert.equal((await h.login(staff)).status, 403);
+  await h.login();
+  await h.request("/team/members/23001", "PATCH", {
+    role: "viewer",
+    status: "active",
+  });
+  const manual = await h.login(staff);
+  assert.equal(manual.status, 200);
+  assert.equal(manual.body.member.access_group_id, null);
+  present = true;
+  for (let id = 24001; id <= 24019; id++)
+    assert.equal((await h.login({ id, first_name: "Коллега" })).status, 200);
 });

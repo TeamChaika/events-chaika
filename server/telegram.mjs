@@ -85,6 +85,37 @@ export function createTelegramClient(
     }
   }
   return {
+    async isGroupMember(chatId, userId) {
+      if (
+        !/^-\d+$/.test(String(chatId)) ||
+        !Number.isSafeInteger(Number(chatId)) ||
+        !/^\d+$/.test(String(userId)) ||
+        !Number.isSafeInteger(Number(userId)) ||
+        Number(userId) <= 0
+      )
+        throw new Error("telegram_rejected");
+      const member = await call("getChatMember", {
+        chat_id: String(chatId),
+        user_id: Number(userId),
+      });
+      if (
+        member?.user?.id !== Number(userId) ||
+        member.user.is_bot ||
+        ![
+          "creator",
+          "administrator",
+          "member",
+          "restricted",
+          "left",
+          "kicked",
+        ].includes(member.status)
+      )
+        throw new Error("telegram_unknown");
+      return (
+        ["creator", "administrator", "member"].includes(member.status) ||
+        (member.status === "restricted" && member.is_member === true)
+      );
+    },
     async check() {
       const bot = await call("getMe");
       if (bot?.is_bot !== true || typeof bot.username !== "string")

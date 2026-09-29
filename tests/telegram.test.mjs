@@ -104,3 +104,44 @@ test("Telegram edits the known message and accepts an already applied edit", asy
     providerId: "42",
   });
 });
+
+test("group membership verifies the exact Telegram identity and status through the existing transport", async (t) => {
+  setup(t);
+  let member = { user: { id: 42, is_bot: false }, status: "member" };
+  const client = createTelegramClient(
+    async (url, options) => {
+      assert.ok(url.endsWith("/getChatMember"));
+      assert.deepEqual(JSON.parse(options.body), {
+        chat_id: "-9988",
+        user_id: 42,
+      });
+      assert.equal(options.dispatcher, "test-proxy");
+      return Response.json({ ok: true, result: member });
+    },
+    () => "test-proxy",
+  );
+  for (const status of ["creator", "administrator", "member"]) {
+    member = { user: { id: 42, is_bot: false }, status };
+    assert.equal(await client.isGroupMember("-9988", "42"), true);
+  }
+  for (const status of ["left", "kicked", "restricted"]) {
+    member = { user: { id: 42, is_bot: false }, status };
+    assert.equal(await client.isGroupMember("-9988", "42"), false);
+  }
+  member = {
+    user: { id: 42, is_bot: false },
+    status: "restricted",
+    is_member: true,
+  };
+  assert.equal(await client.isGroupMember("-9988", "42"), true);
+  for (const bad of [
+    { user: { id: 43 }, status: "member" },
+    { user: { id: 42, is_bot: true }, status: "member" },
+    { user: { id: 42 }, status: "unknown" },
+  ]) {
+    member = bad;
+    await assert.rejects(client.isGroupMember("-9988", "42"), {
+      message: "telegram_unknown",
+    });
+  }
+});

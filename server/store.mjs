@@ -130,6 +130,15 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
         ["provider_status", "INTEGER"],
         ["status_attempts", "INTEGER NOT NULL DEFAULT 0"],
       ];
+      if (
+        db.kind === "postgres" ||
+        !(await db.all("PRAGMA table_info(team_members)")).some(
+          (c) => c.name === "access_group_id",
+        )
+      )
+        await db.exec(
+          `ALTER TABLE team_members ADD COLUMN ${db.kind === "postgres" ? "IF NOT EXISTS " : ""}access_group_id TEXT`,
+        );
       const orderColumns = [
         ["is_test", "INTEGER NOT NULL DEFAULT 0"],
         ["voided_at", "TEXT"],

@@ -23,6 +23,7 @@ import {
   promotionService,
   registerTeamRoutes,
   isPromotionPath,
+  createGroupAccess,
 } from "./promotion.mjs";
 
 const hash = (s) => createHash("sha256").update(s).digest("hex");
@@ -95,6 +96,9 @@ export async function createApp({
   origin = process.env.APP_ORIGIN || "http://localhost:5173",
   testing = false,
   legalDocuments,
+  teamGroupAccess = createGroupAccess(
+    process.env.TELEGRAM_MINIAPP_GROUP_ID || "",
+  ),
   mediaDir = resolve(dirname(dbPath), "media"),
 } = {}) {
   const production = process.env.NODE_ENV === "production";
@@ -209,6 +213,12 @@ export async function createApp({
     limit: 15,
     message: { error: "Слишком много попыток входа. Подождите 15 минут." },
   });
+  const teamAuthLimit = rateLimit({
+    windowMs: 15 * 60000,
+    limit: 15,
+    skipSuccessfulRequests: true,
+    message: { error: "Слишком много попыток входа. Подождите 15 минут." },
+  });
   const orderLimit = rateLimit({
     windowMs: 60000,
     limit: 8,
@@ -281,7 +291,12 @@ export async function createApp({
   app.get("/api/promotion/resolve", async (req, res) =>
     res.json(await promotion.resolve(req.query.event, req.query.source)),
   );
-  registerTeamRoutes(app, { store, promotion, authLimit });
+  registerTeamRoutes(app, {
+    store,
+    promotion,
+    authLimit: teamAuthLimit,
+    groupAccess: teamGroupAccess,
+  });
   app.get("/api/events", async (_req, res) =>
     res.json(
       await Promise.all(
