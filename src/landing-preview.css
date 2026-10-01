@@ -1,0 +1,867 @@
+.lp {
+  --lp-soft: #b0aba8;
+  background: #09090b;
+  color: var(--paper);
+  overflow: clip;
+}
+.lp-wrap {
+  width: min(1280px, calc(100% - 112px));
+  margin-inline: auto;
+}
+.lp-review-note {
+  padding: 12px 20px;
+  background: #1d1414;
+  color: #c9b1aa;
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+.lp-review-note > span {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-right: 8px;
+  background: var(--red);
+  border-radius: 50%;
+  vertical-align: middle;
+}
+.lp-nav {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-bottom: 1px solid #ffffff24;
+}
+.lp-nav a {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 88px;
+  font-size: 13px;
+}
+.lp-nav a > span {
+  font-size: 10px;
+  color: #a57b72;
+  font-variant-numeric: tabular-nums;
+}
+.lp-nav a > svg {
+  margin-left: auto;
+  margin-right: 32px;
+  color: var(--red);
+}
+.lp-nav a:hover {
+  color: var(--red);
+}
+.lp-section {
+  padding-block: 112px;
+  scroll-margin-top: 28px;
+}
+.lp-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  color: #c4b9b4;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  line-height: 1.6;
+}
+.lp-eyebrow > span {
+  width: 5px;
+  height: 5px;
+  background: var(--red);
+}
+.lp-eyebrow > i {
+  margin-left: auto;
+  font-style: normal;
+  color: #8d7e78;
+  letter-spacing: 0.09em;
+}
+.lp-display {
+  font-family: "Oswald Variable", sans-serif;
+  font-size: clamp(42px, 5.5vw, 80px);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 1.08;
+}
+.lp-display em {
+  font-family: inherit;
+  font-style: normal;
+  color: var(--red);
+}
+.lp-about-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 72px;
+  margin-top: 45px;
+}
+.lp-about-copy {
+  max-width: 490px;
+  padding-top: 2px;
+}
+.lp-about-copy p {
+  color: var(--lp-soft);
+  font-size: 14px;
+  line-height: 1.9;
+  margin-top: 21px;
+}
+.lp-about-copy .lp-lead {
+  color: var(--paper);
+  font-size: clamp(19px, 1.7vw, 24px);
+  line-height: 1.55;
+  margin-top: 0;
+  letter-spacing: -0.025em;
+}
+.lp-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.35fr;
+  gap: 38px;
+  border-top: 1px solid #ffffff24;
+  margin-top: 65px;
+  padding-top: 38px;
+}
+.lp-facts > div {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+.lp-facts strong {
+  font-family: "Oswald Variable", sans-serif;
+  font-size: clamp(45px, 5vw, 68px);
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: #ed6759;
+}
+.lp-facts span {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  line-height: 1.6;
+}
+.lp-facts small {
+  display: block;
+  color: var(--lp-soft);
+  margin-top: 3px;
+  font-size: 11px;
+  letter-spacing: 0;
+}
+.lp-lineup {
+  background: linear-gradient(
+    155deg,
+    #17100f 0,
+    #0c0a0c 33%,
+    #0c0a0c 75%,
+    #180e0f
+  );
+  border-block: 1px solid #ffffff10;
+}
+.lp-heading-row {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  align-items: end;
+  gap: 72px;
+  margin: 40px 0 55px;
+}
+.lp-section-aside {
+  justify-self: end;
+  padding-bottom: 6px;
+}
+.lp-section-aside p {
+  font-size: 17px;
+  line-height: 1.8;
+  color: #c1b8b3;
+}
+.lp-section-aside > span {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: #a07c72;
+  margin-top: 25px;
+}
+.lp-stage + .lp-stage {
+  margin-top: 64px;
+}
+.lp-stage-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border-top: 1px solid #ffffff29;
+  padding: 23px 0;
+}
+.lp-stage-heading h3 {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+}
+.lp-stage-heading h3 span {
+  font-size: 11px;
+  color: var(--red);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+.lp-stage-heading p {
+  font-size: 11px;
+  color: #c0aea7;
+}
+.lp-artists {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+}
+.lp-portrait {
+  position: relative;
+  aspect-ratio: 4 / 4.6;
+  overflow: hidden;
+  background: #231516;
+}
+.lp-portrait::after {
+  position: absolute;
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(transparent 60%, #0a030a88);
+}
+.lp-portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 35%;
+  display: block;
+  transition:
+    transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1),
+    filter 0.8s;
+  filter: saturate(0.8);
+}
+.lp-artist:hover .lp-portrait img {
+  transform: scale(1.035);
+  filter: saturate(1.05);
+}
+.lp-portrait-index {
+  position: absolute;
+  top: 19px;
+  left: 20px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: #fff9;
+}
+.lp-portrait-label {
+  position: absolute;
+  z-index: 1;
+  bottom: 17px;
+  left: 20px;
+  color: #f6e9e0bf;
+  font-size: 8px;
+  letter-spacing: 0.12em;
+}
+.lp-artist-caption {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  padding-top: 18px;
+}
+.lp-artist-caption h4 {
+  font-family: "Oswald Variable", sans-serif;
+  font-weight: 450;
+  font-size: clamp(24px, 2.5vw, 36px);
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+  margin: 0;
+}
+.lp-artist-caption > span {
+  color: #c2aaa2;
+  font-size: 11px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.lp-draft-note {
+  font-size: 11px;
+  color: #a0938d;
+  line-height: 1.7;
+  margin-top: 35px;
+}
+.lp-dress-intro {
+  font-size: 16px;
+  line-height: 1.9;
+  color: #c5bbb5;
+  max-width: 450px;
+  padding-bottom: 3px;
+}
+.lp-dress-rules {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid #ffffff25;
+  margin-top: 24px;
+}
+.lp-dress-rules > div {
+  position: relative;
+  padding: 28px 30px 30px 0;
+}
+.lp-dress-rules > div + div {
+  border-left: 1px solid #ffffff19;
+  padding-left: 30px;
+}
+.lp-rule-number {
+  display: block;
+  color: #bd8f84;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+}
+.lp-dress-rules h3 {
+  font-size: 21px;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  margin: 25px 0 14px;
+}
+.lp-dress-rules p {
+  font-size: 12px;
+  line-height: 1.9;
+  color: var(--lp-soft);
+}
+.lp-swatches {
+  position: absolute;
+  right: 30px;
+  top: 25px;
+  display: flex;
+  gap: 6px;
+}
+.lp-swatches i {
+  width: 16px;
+  height: 16px;
+  background: #161616;
+  border: 1px solid #ffffff35;
+  border-radius: 50%;
+}
+.lp-swatches i + i {
+  background: #d9302b;
+  border-color: #d9302b;
+}
+.lp-gallery-heading {
+  margin: 36px 0 20px;
+  display: flex;
+  gap: 15px;
+  justify-content: space-between;
+  align-items: center;
+}
+.lp-gallery-heading > span:first-child {
+  font-size: 10px;
+  letter-spacing: 0.15em;
+}
+.lp-gallery-heading > span + span {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--lp-soft);
+  font-size: 11px;
+}
+.lp-gallery {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.lp-gallery button {
+  padding: 0;
+  border: 0;
+  background: #261514;
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+}
+.lp-gallery img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.7s var(--ease);
+}
+.lp-gallery button:hover img {
+  transform: scale(1.06);
+}
+.lp-gallery button > span {
+  position: absolute;
+  inset: auto 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28px 16px 14px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  background: linear-gradient(transparent, #0009);
+}
+.lp-quote {
+  position: relative;
+  text-align: center;
+  font-size: clamp(19px, 2.25vw, 30px);
+  font-weight: 400;
+  line-height: 1.6;
+  letter-spacing: -0.035em;
+  margin: 80px 0 0;
+  padding: 44px 20px 0;
+}
+.lp-quote > span {
+  position: absolute;
+  top: -34px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: Georgia, serif;
+  font-size: 90px;
+  color: #c84238;
+}
+.lp-quote em {
+  font-family: inherit;
+  color: #b59e94;
+  font-style: normal;
+}
+.lp-collab {
+  background:
+    radial-gradient(ellipse at 50% 40%, #30100f66, transparent 60%), #100c0e;
+  border-block: 1px solid #ffffff17;
+}
+.lp-organizers {
+  display: grid;
+  grid-template-columns: 1fr 70px 1fr;
+  align-items: start;
+  gap: 40px;
+  padding: 5px 0 10px;
+}
+.lp-organizers article {
+  border-top: 1px solid #ffffff24;
+}
+.lp-organizer-logo {
+  height: 180px;
+  display: flex;
+  align-items: center;
+}
+.lp-organizer-logo img {
+  width: 220px;
+  max-height: 105px;
+  object-fit: contain;
+  height: auto;
+}
+.lp-organizers h3 {
+  font-size: 29px;
+  letter-spacing: -0.05em;
+  line-height: 1.3;
+  font-weight: 500;
+  margin: 20px 0;
+}
+.lp-organizers p {
+  max-width: 410px;
+  color: var(--lp-soft);
+  font-size: 13px;
+  line-height: 1.9;
+}
+.lp-collab-cross {
+  align-self: start;
+  padding-top: 40px;
+  text-align: center;
+  font-weight: 200;
+  font-size: 76px;
+  color: #cf5d4c;
+}
+.lp-finale {
+  position: relative;
+  isolation: isolate;
+  padding-block: 115px 125px;
+  text-align: center;
+}
+.lp-finale .lp-eyebrow {
+  justify-content: center;
+}
+.lp-finale h2 {
+  margin-top: 32px;
+  font-size: clamp(40px, 6vw, 84px);
+}
+.lp-finale > p {
+  color: #bdaaa3;
+  line-height: 1.8;
+  font-size: 14px;
+  margin: 28px auto;
+}
+.lp-finale .button {
+  display: inline-flex;
+  min-width: 250px;
+  gap: 22px;
+  justify-content: center;
+}
+.lp-finale-price {
+  display: block;
+  font-size: 11px;
+  color: #ab928a;
+  margin-top: 16px;
+}
+.lp-finale-moon {
+  position: absolute;
+  z-index: -1;
+  width: min(700px, 105vw);
+  aspect-ratio: 1;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    #851f1a20,
+    #b1372422 50%,
+    #73151044 50.2%,
+    transparent 50.5%,
+    transparent 64%,
+    #cb64521c 64.2%,
+    transparent 64.5%
+  );
+}
+.lp-lightbox {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  padding: 24px;
+  background: transparent;
+  border: 0;
+  color: var(--paper);
+  width: 100%;
+  height: 100%;
+  max-width: 100vw;
+  max-height: 100dvh;
+}
+.lp-lightbox::backdrop {
+  background: #050406f2;
+  backdrop-filter: blur(8px);
+}
+.lp-lightbox-inner {
+  position: relative;
+  margin: auto;
+  width: min(78vh, 860px, 100%);
+  top: 50%;
+  transform: translateY(-50%);
+}
+.lp-lightbox-inner > img {
+  display: block;
+  width: 100%;
+  max-height: calc(100dvh - 160px);
+  object-fit: contain;
+}
+.lp-lightbox button {
+  border: 1px solid #ffffff40;
+  background: #0a0808;
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+}
+.lp-lightbox button:hover {
+  background: #4b2320;
+}
+.lp-lightbox-close {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+}
+.lp-lightbox-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 16px;
+}
+.lp-lightbox-controls p {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.lp-lightbox-controls p > span {
+  color: #a68c82;
+}
+@media (min-width: 1800px) {
+  .lp-wrap {
+    width: min(1520px, calc(100% - 160px));
+  }
+}
+@media (max-width: 1050px) {
+  .lp-wrap {
+    width: calc(100% - 64px);
+  }
+  .lp-about-grid,
+  .lp-heading-row {
+    gap: 35px;
+    grid-template-columns: 1.1fr 1fr;
+  }
+  .lp-facts {
+    gap: 22px;
+  }
+  .lp-facts > div {
+    gap: 15px;
+  }
+  .lp-facts strong {
+    font-size: 46px;
+  }
+  .lp-artists {
+    gap: 16px;
+  }
+  .lp-artist-caption {
+    display: block;
+  }
+  .lp-artist-caption > span {
+    display: block;
+    margin-top: 10px;
+  }
+  .lp-dress-rules > div {
+    padding-right: 22px;
+  }
+  .lp-dress-rules > div + div {
+    padding-left: 22px;
+  }
+  .lp-dress-rules h3 {
+    font-size: 19px;
+  }
+  .lp-swatches {
+    right: 20px;
+  }
+  .lp-organizers {
+    gap: 25px;
+    grid-template-columns: 1fr 40px 1fr;
+  }
+}
+@media (max-width: 700px) {
+  .lp-wrap {
+    width: calc(100% - 40px);
+  }
+  .lp-review-note {
+    font-size: 9px;
+    line-height: 1.7;
+    padding-inline: 30px;
+  }
+  .lp-nav {
+    grid-template-columns: 1fr 1fr;
+    padding-block: 8px;
+  }
+  .lp-nav a {
+    min-height: 50px;
+    font-size: 11px;
+    gap: 10px;
+  }
+  .lp-nav a > svg {
+    margin-right: 16px;
+  }
+  .lp-section {
+    padding-block: 68px;
+    scroll-margin-top: 22px;
+  }
+  .lp-eyebrow {
+    font-size: 9px;
+    letter-spacing: 0.14em;
+  }
+  .lp-display {
+    font-size: clamp(38px, 10.6vw, 62px);
+  }
+  .lp-about-grid,
+  .lp-heading-row {
+    display: block;
+    margin-top: 30px;
+  }
+  .lp-about-copy {
+    padding-top: 30px;
+    max-width: none;
+  }
+  .lp-about-copy .lp-lead {
+    font-size: 19px;
+  }
+  .lp-about-copy p {
+    font-size: 13px;
+  }
+  .lp-facts {
+    grid-template-columns: 1fr 1fr;
+    gap: 28px 18px;
+    margin-top: 35px;
+    padding-top: 27px;
+  }
+  .lp-facts > div {
+    align-items: start;
+    gap: 13px;
+  }
+  .lp-facts > div:last-child {
+    grid-column: 1 / -1;
+    border-top: 1px solid #ffffff20;
+    padding-top: 25px;
+  }
+  .lp-facts strong {
+    font-size: 44px;
+  }
+  .lp-facts span {
+    font-size: 9px;
+  }
+  .lp-facts small {
+    font-size: 10px;
+    letter-spacing: -0.02em;
+  }
+  .lp-section-aside {
+    margin-top: 25px;
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    align-items: end;
+  }
+  .lp-section-aside p {
+    font-size: 13px;
+  }
+  .lp-section-aside > span {
+    font-size: 8px;
+  }
+  .lp-heading-row {
+    margin-bottom: 34px;
+  }
+  .lp-stage-heading {
+    align-items: start;
+    flex-direction: column;
+    padding-block: 19px;
+    gap: 9px;
+  }
+  .lp-stage-heading h3 {
+    font-size: 17px;
+    gap: 12px;
+  }
+  .lp-stage-heading p {
+    font-size: 10px;
+    padding-left: 26px;
+  }
+  .lp-artists {
+    grid-template-columns: 1fr 1fr;
+    gap: 24px 12px;
+  }
+  .lp-artist:first-child {
+    grid-column: 1 / -1;
+  }
+  .lp-artist:first-child .lp-portrait {
+    aspect-ratio: 1.15;
+  }
+  .lp-artist:first-child .lp-portrait img {
+    object-position: 50% 27%;
+  }
+  .lp-artist:first-child .lp-artist-caption {
+    display: flex;
+  }
+  .lp-artist-caption {
+    padding-top: 12px;
+  }
+  .lp-artist-caption h4 {
+    font-size: clamp(22px, 6.2vw, 32px);
+  }
+  .lp-artist:first-child h4 {
+    font-size: 36px;
+  }
+  .lp-artist-caption > span {
+    margin-top: 7px;
+    font-size: 10px;
+  }
+  .lp-portrait-index {
+    top: 13px;
+    left: 12px;
+    font-size: 8px;
+  }
+  .lp-portrait-label {
+    bottom: 10px;
+    left: 10px;
+    font-size: 6px;
+    letter-spacing: 0.07em;
+  }
+  .lp-stage + .lp-stage {
+    margin-top: 38px;
+  }
+  .lp-draft-note {
+    font-size: 10px;
+    margin-top: 26px;
+  }
+  .lp-dress-intro {
+    font-size: 14px;
+    margin-top: 26px;
+  }
+  .lp-dress-rules {
+    display: block;
+  }
+  .lp-dress-rules > div,
+  .lp-dress-rules > div + div {
+    padding: 24px 0;
+    border-left: 0;
+    border-bottom: 1px solid #ffffff20;
+  }
+  .lp-dress-rules h3 {
+    margin-top: 16px;
+    font-size: 22px;
+  }
+  .lp-dress-rules p {
+    font-size: 13px;
+  }
+  .lp-swatches {
+    right: 2px;
+  }
+  .lp-gallery-heading {
+    display: block;
+    margin-top: 32px;
+  }
+  .lp-gallery-heading > span:first-child {
+    font-size: 9px;
+  }
+  .lp-gallery-heading > span + span {
+    margin-top: 10px;
+    font-size: 10px;
+  }
+  .lp-gallery {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .lp-gallery button > span {
+    padding: 20px 10px 10px;
+  }
+  .lp-quote {
+    font-size: 19px;
+    padding: 33px 0 0;
+    margin-top: 60px;
+  }
+  .lp-quote br {
+    display: none;
+  }
+  .lp-organizers {
+    display: block;
+  }
+  .lp-organizer-logo {
+    height: 140px;
+  }
+  .lp-organizer-logo img {
+    width: 190px;
+    max-height: 85px;
+  }
+  .lp-organizers h3 {
+    font-size: 27px;
+    margin-block: 16px;
+  }
+  .lp-collab-cross {
+    display: block;
+    padding: 13px 0;
+    font-size: 45px;
+    line-height: 1.3;
+    text-align: left;
+  }
+  .lp-finale {
+    padding-block: 78px 90px;
+  }
+  .lp-finale h2 {
+    font-size: clamp(34px, 10vw, 60px);
+  }
+  .lp-finale .lp-eyebrow {
+    font-size: 8px;
+    letter-spacing: 0.09em;
+  }
+  .lp-finale > p {
+    font-size: 12px;
+  }
+  .lp-lightbox {
+    padding: 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp *,
+  .lp-lightbox * {
+    transition: none !important;
+    scroll-behavior: auto;
+  }
+}

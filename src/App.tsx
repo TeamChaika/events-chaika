@@ -61,6 +61,11 @@ import {
   type LegalCatalog,
 } from "./Legal";
 
+// Review content is loaded only on the separate /test-lending route.
+const LandingPreviewSections = React.lazy(
+  () => import("./LandingPreviewSections"),
+);
+
 function Countdown({ event }: { event: EventData }) {
   const [time, setTime] = useState(Date.now());
   useEffect(() => {
@@ -97,7 +102,7 @@ function Countdown({ event }: { event: EventData }) {
     </div>
   );
 }
-function Home() {
+function Home({ preview = false }: { preview?: boolean }) {
   const [events, setEvents] = useState<EventData[]>([]);
   const [config, setConfig] = useState<Config>();
   const [error, setError] = useState("");
@@ -203,6 +208,7 @@ function Home() {
         </div>
       ) : event && config ? (
         <EventLanding
+          preview={preview}
           event={event}
           config={config}
           introActive={introActive}
@@ -220,11 +226,13 @@ function Home() {
 }
 
 function EventLanding({
+  preview = false,
   event,
   config,
   introActive,
   onArtworkReady,
 }: {
+  preview?: boolean;
   event: EventData;
   config: Config;
   introActive: boolean;
@@ -357,6 +365,21 @@ function EventLanding({
             ))}
           </div>
         </div>
+        {preview && (
+          <React.Suspense
+            fallback={
+              <div className="loading-screen">
+                <Spinner />
+              </div>
+            }
+          >
+            <LandingPreviewSections
+              event={event}
+              canBuy={canBuy}
+              onBuy={() => setBuy(true)}
+            />
+          </React.Suspense>
+        )}
       </main>
       <CookieNotice />
       <footer className="public-footer">
@@ -998,6 +1021,6 @@ export default function App() {
   ) : path.startsWith("/ticket/") ? (
     <SingleTicket />
   ) : (
-    <Home />
+    <Home preview={path === "/test-lending" || path === "/test-lending/"} />
   );
 }

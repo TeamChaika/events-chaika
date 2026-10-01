@@ -1,0 +1,46 @@
+{
+  "generation": "Built-in image_gen; fictional temporary DJ portraits, not likenesses of the named performers.",
+  "portraits": [
+    {
+      "name": "dibidabo",
+      "prompt": "Use case: photorealistic-natural. Asset type: temporary portrait placeholder for a premium Russian red-moon electronic music event website. A fictional male electronic music DJ aged 32 with short textured dark hair and light stubble, wearing a black oversized high-neck shirt. Three-quarter bust portrait, turned slightly left, looking toward camera, quiet self-assurance. This is an invented person, NOT a likeness of any actual named musician. Editorial analog fashion photography, 4:5 vertical portrait, subject's head fully visible with generous space at top, face in upper middle, chest at bottom. Charcoal-black studio backdrop with a subtle dark burgundy atmospheric haze. Monochrome skin and clothes with restrained crimson rim lighting from one side, soft white key light, visible natural skin texture, subtle film grain, cinematic high contrast with readable face, elegant underground club mood. No moon, no bat, no headphones, no DJ deck, no logos, no text, no collage, no border. One person only. Target 800x1000 or similar vertical aspect ratio.",
+      "asset": "public/assets/landing-preview/dibidabo.webp"
+    },
+    {
+      "name": "nerak",
+      "prompt": "Use case: photorealistic-natural. Asset type: temporary portrait placeholder for a premium Russian red-moon electronic music event website. A fictional male electronic music DJ aged 36 with closely cropped hair, defined cheekbones, clean shaven, in a black technical jacket. Frontal bust portrait, chin slightly raised, intense calm gaze. This is an invented person, NOT a likeness of any actual named musician. Editorial analog fashion photography, 4:5 vertical portrait, subject's head fully visible with generous space at top, face in upper middle, chest at bottom. Charcoal-black studio backdrop with a subtle dark burgundy atmospheric haze. Monochrome skin and clothes with restrained crimson rim lighting from one side, soft white key light, visible natural skin texture, subtle film grain, cinematic high contrast with readable face, elegant underground club mood. No moon, no bat, no headphones, no DJ deck, no logos, no text, no collage, no border. One person only. Target 800x1000 or similar vertical aspect ratio.",
+      "asset": "public/assets/landing-preview/nerak.webp"
+    },
+    {
+      "name": "roma-busha",
+      "prompt": "Use case: photorealistic-natural. Asset type: temporary portrait placeholder for a premium Russian red-moon electronic music event website. A fictional male electronic music DJ aged 30 with tousled medium dark hair, light beard, small silver earring and black open-collar shirt. Bust portrait facing slightly right, relaxed magnetic expression. This is an invented person, NOT a likeness of any actual named musician. Editorial analog fashion photography, 4:5 vertical portrait, subject's head fully visible with generous space at top, face in upper middle, chest at bottom. Charcoal-black studio backdrop with a subtle dark burgundy atmospheric haze. Monochrome skin and clothes with restrained crimson rim lighting from one side, soft white key light, visible natural skin texture, subtle film grain, cinematic high contrast with readable face, elegant underground club mood. No moon, no bat, no headphones, no DJ deck, no logos, no text, no collage, no border. One person only. Target 800x1000 or similar vertical aspect ratio.",
+      "asset": "public/assets/landing-preview/roma-busha.webp"
+    },
+    {
+      "name": "martin-w",
+      "prompt": "Use case: photorealistic-natural. Asset type: temporary portrait placeholder for a premium Russian red-moon electronic music event website. A fictional male electronic music DJ aged 34 with short curly hair, stubble and simple black crewneck. Waist-up portrait with arms folded, looking sideways, confident and relaxed. This is an invented person, NOT a likeness of any actual named musician. Editorial analog fashion photography, 4:5 vertical portrait, subject's head fully visible with generous space at top, face in upper middle, chest at bottom. Charcoal-black studio backdrop with a subtle dark burgundy atmospheric haze. Monochrome skin and clothes with restrained crimson rim lighting from one side, soft white key light, visible natural skin texture, subtle film grain, cinematic high contrast with readable face, elegant underground club mood. No moon, no bat, no headphones, no DJ deck, no logos, no text, no collage, no border. One person only. Target 800x1000 or similar vertical aspect ratio.",
+      "asset": "public/assets/landing-preview/martin-w.webp"
+    },
+    {
+      "name": "leo-n",
+      "prompt": "Use case: photorealistic-natural. Asset type: temporary portrait placeholder for a premium Russian red-moon electronic music event website. A fictional male electronic music DJ aged 29 with slicked back dark hair and clean shaven face in a black minimalist tailored jacket. Three-quarter bust portrait, thoughtful direct gaze. This is an invented person, NOT a likeness of any actual named musician. Editorial analog fashion photography, 4:5 vertical portrait, subject's head fully visible with generous space at top, face in upper middle, chest at bottom. Charcoal-black studio backdrop with a subtle dark burgundy atmospheric haze. Monochrome skin and clothes with restrained crimson rim lighting from one side, soft white key light, visible natural skin texture, subtle film grain, cinematic high contrast with readable face, elegant underground club mood. No moon, no bat, no headphones, no DJ deck, no logos, no text, no collage, no border. One person only. Target 800x1000 or similar vertical aspect ratio.",
+      "asset": "public/assets/landing-preview/leo-n.webp"
+    },
+    {
+      "name": "johny-t",
+      "prompt": "Use case: photorealistic-natural. Asset type: temporary portrait placeholder for a premium Russian red-moon electronic music event website. A fictional male electronic music DJ aged 33 with close-cropped hair and neat moustache, black t-shirt and understated silver chain. Bust portrait slightly turned left, energetic charismatic gaze. This is an invented person, NOT a likeness of any actual named musician. Editorial analog fashion photography, 4:5 vertical portrait, subject's head fully visible with generous space at top, face in upper middle, chest at bottom. Charcoal-black studio backdrop with a subtle dark burgundy atmospheric haze. Monochrome skin and clothes with restrained crimson rim lighting from one side, soft white key light, visible natural skin texture, subtle film grain, cinematic high contrast with readable face, elegant underground club mood. No moon, no bat, no headphones, no DJ deck, no logos, no text, no collage, no border. One person only. Target 800x1000 or similar vertical aspect ratio.",
+      "asset": "public/assets/landing-preview/johny-t.webp"
+    }
+  ],
+  "dresscodeSource": "Разделы на Лендинг.docx; https://disk.360.yandex.ru/d/zXtXwi7wc2wedQ",
+  "dresscodeAssets": [
+    "public/assets/landing-preview/dress-1.webp",
+    "public/assets/landing-preview/dress-2.webp",
+    "public/assets/landing-preview/dress-3.webp",
+    "public/assets/landing-preview/dress-4.webp",
+    "public/assets/landing-preview/dress-5.webp",
+    "public/assets/landing-preview/dress-6.webp",
+    "public/assets/landing-preview/dress-7.webp",
+    "public/assets/landing-preview/dress-8.webp"
+  ]
+}

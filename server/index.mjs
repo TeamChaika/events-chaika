@@ -968,6 +968,11 @@ export async function createApp({
     }),
   );
   app.use(express.static(resolve("dist")));
+  app.get("/test-lending", (_req, res) =>
+    res
+      .set("X-Robots-Tag", "noindex, nofollow")
+      .sendFile(resolve("dist/index.html")),
+  );
   app.get("/{*path}", (_req, res) => res.sendFile(resolve("dist/index.html")));
   app.use((err, _req, res, _next) => {
     const status = err instanceof z.ZodError ? 400 : err.status || 500;
