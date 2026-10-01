@@ -2,7 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { openStore, seed } from "../server/store.mjs";
-import { processOutbox, channelReady, ticketSms } from "../server/delivery.mjs";
+import {
+  processOutbox,
+  channelReady,
+  ticketSms,
+  deliver,
+} from "../server/delivery.mjs";
+import nodemailer from "nodemailer";
 import {
   sendSmsAero,
   readSmsAeroStatus,
@@ -117,14 +123,14 @@ test("SMS Aero keeps auth out of URL and sends a single ticket link", async (t) 
   await processOutbox(h.store, "https://events.example.com", false);
   assert.equal(calls, 1);
 });
-test("SMS preserves a direct link to each purchased ticket without order links or quantity text", () => {
+test("SMS includes one direct group ticket link regardless of guest count", () => {
   assert.equal(
     ticketSms(
       { title: "Ночь красной луны" },
       [{ code: "one" }, { code: "two" }],
       "https://events.example.com",
     ),
-    "Гастро Двор. Ночь красной луны.\nhttps://events.example.com/ticket/one\nhttps://events.example.com/ticket/two",
+    "Гастро Двор. Ночь красной луны.\nhttps://events.example.com/ticket/one",
   );
   assert.throws(
     () =>
@@ -134,6 +140,74 @@ test("SMS preserves a direct link to each purchased ticket without order links o
         "https://events.example.com",
       ),
     /sms_tickets_missing/,
+  );
+});
+test("multi-guest outbox sends one SMS URL and preserves every admission record", async (t) => {
+  const h = await outbox(t);
+  await h.store.run(
+    "UPDATE orders SET quantity=3,total=1500000 WHERE id=?",
+    h.order.id,
+  );
+  for (let ordinal = 2; ordinal <= 3; ordinal++)
+    await h.store.run(
+      "INSERT INTO tickets(id,code,order_id,ordinal) VALUES (?,?,?,?)",
+      randomUUID(),
+      `fixture-${ordinal}`,
+      h.order.id,
+      ordinal,
+    );
+  let sends = 0;
+  global.fetch = async (_url, options) => {
+    sends++;
+    assert.equal(
+      options.body.get("text"),
+      "Гастро Двор. Ночь красной луны.\nhttps://events.example.com/ticket/fixture-ticket",
+    );
+    return response(0);
+  };
+  await processOutbox(h.store, "https://events.example.com", false);
+  assert.equal(sends, 1);
+  assert.equal(
+    (
+      await h.store.get(
+        "SELECT COUNT(*) AS count FROM tickets WHERE order_id=?",
+        h.order.id,
+      )
+    ).count,
+    3,
+  );
+});
+test("email contains one QR and the same group ticket URL as SMS", async (t) => {
+  let message;
+  t.mock.method(nodemailer, "createTransport", () => ({
+    sendMail: async (value) => {
+      message = value;
+      return { accepted: ["guest@example.com"] };
+    },
+  }));
+  await deliver(
+    { channel: "email" },
+    { first_name: "Гость", email: "guest@example.com", quantity: 3 },
+    {
+      title: "Ночь",
+      date: "2026-10-31",
+      time: "21:00",
+      venue: "Гастро Двор",
+      address: "Ялта",
+    },
+    [
+      { code: "first", ordinal: 1 },
+      { code: "second", ordinal: 2 },
+      { code: "third", ordinal: 3 },
+    ],
+    "https://events.example.com",
+  );
+  assert.equal(message.attachments.length, 1);
+  assert.match(message.text, /Количество гостей: 3/);
+  assert.match(message.text, /https:\/\/events\.example\.com\/ticket\/first/);
+  assert.doesNotMatch(
+    message.html,
+    /\/order\/|\/ticket\/second|\/ticket\/third|одного гостя/,
   );
 });
 test("status reconciliation confirms delivery without another send", async (t) => {

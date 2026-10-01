@@ -518,6 +518,7 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
     markPaid,
     checkin,
     attendance,
+    orderAttendance,
     searchTickets,
     previewCheckin,
     checkinGroup,

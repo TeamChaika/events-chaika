@@ -1194,6 +1194,12 @@ test("one group QR admits three then two guests; retries and stale confirmations
     order.body.id,
   );
   const code = tickets[4].code;
+  const publicTicket = () => h.request(`/tickets/${code}`);
+  assert.deepEqual((await publicTicket()).body.group, {
+    issued: 5,
+    checked: 0,
+    remaining: 5,
+  });
   const preview = () =>
     h.request("/checkin/preview", {
       method: "POST",
@@ -1227,6 +1233,15 @@ test("one group QR admits three then two guests; retries and stale confirmations
   assert.equal(first.body.admitted, 3);
   assert.deepEqual(first.body.ordinals, [5, 1, 2]);
   assert.deepEqual(first.body.group, { issued: 5, checked: 3, remaining: 2 });
+  const partlyUsed = await publicTicket();
+  assert.ok(partlyUsed.body.used_at);
+  assert.deepEqual(partlyUsed.body.group, {
+    issued: 5,
+    checked: 3,
+    remaining: 2,
+  });
+  assert.equal(partlyUsed.body.code, code);
+  assert.equal(partlyUsed.body.order_id, undefined);
   const retry = await admit(3, 0);
   assert.equal(retry.status, 200);
   assert.equal(retry.body.replayed, true);
@@ -1238,6 +1253,11 @@ test("one group QR admits three then two guests; retries and stale confirmations
   assert.equal(last.status, 200);
   assert.equal(last.body.group.checked, 5);
   assert.equal(last.body.group.remaining, 0);
+  assert.deepEqual((await publicTicket()).body.group, {
+    issued: 5,
+    checked: 5,
+    remaining: 0,
+  });
   assert.equal((await admit(1, 5, randomUUID())).status, 409);
   assert.equal(
     (

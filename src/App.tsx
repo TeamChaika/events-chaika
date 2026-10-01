@@ -650,7 +650,7 @@ function OrderPage() {
     order?.status === "paid" &&
     !order.voided_at &&
     !order.is_test &&
-    order.tickets.length === 1
+    order.tickets.length > 0
       ? "/ticket/" + order.tickets[0].code
       : null;
   useEffect(() => {
@@ -895,24 +895,50 @@ function SingleTicket() {
     >(),
     [error, setError] = useState("");
   useEffect(() => {
-    api<
-      TicketData & {
-        event: EventData;
-        first_name: string;
-        last_name: string;
-        mode: string;
-        unsubscribe_url: string | null;
-      }
-    >("/tickets/" + location.pathname.split("/")[2])
-      .then(setData)
-      .catch((e) => setError(e.message));
+    let active = true;
+    let loaded = false;
+    const load = () =>
+      api<
+        TicketData & {
+          event: EventData;
+          first_name: string;
+          last_name: string;
+          mode: string;
+          unsubscribe_url: string | null;
+        }
+      >("/tickets/" + location.pathname.split("/")[2])
+        .then((ticket) => {
+          if (!active) return;
+          loaded = true;
+          setData(ticket);
+          setError("");
+        })
+        .catch((e) => {
+          if (active)
+            setError(
+              loaded
+                ? `Не удалось обновить статус билета. ${e.message}`
+                : e.message,
+            );
+        });
+    const refresh = () => {
+      if (!document.hidden) void load();
+    };
+    void load();
+    const timer = setInterval(refresh, 15000);
+    window.addEventListener("pageshow", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      active = false;
+      clearInterval(timer);
+      window.removeEventListener("pageshow", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
   }, []);
+  const hasRemaining =
+    data && (data.group ? data.group.remaining > 0 : !data.used_at);
   const introActive = Boolean(
-    showIntro &&
-      data &&
-      data.event.id === "red-moon" &&
-      !data.used_at &&
-      !error,
+    showIntro && data && data.event.id === "red-moon" && hasRemaining && !error,
   );
   return (
     <>
@@ -941,7 +967,7 @@ function SingleTicket() {
               Сохранить билет
             </button>
             <MarketingLink url={data.unsubscribe_url} />
-            {data.event.id === "red-moon" && !data.used_at && (
+            {data.event.id === "red-moon" && hasRemaining && (
               <button
                 className="cinema-ticket-replay"
                 onClick={() => setShowIntro(true)}

@@ -17,10 +17,17 @@ export function TicketCard({
 }) {
   const redMoon = event.id === "red-moon";
   const venue = event.venue === "Гастродвор" ? "Гастро Двор" : event.venue;
+  const group = ticket.group;
+  const shared = Boolean(group && group.issued > 1);
+  const used = group ? group.remaining === 0 : Boolean(ticket.used_at);
   return (
     <article
       className="real-ticket"
-      aria-label={`Билет ${ticket.ordinal}: ${event.title}`}
+      aria-label={
+        shared
+          ? `Билет на ${group!.issued} гостей: ${event.title}`
+          : `Билет ${ticket.ordinal}: ${event.title}`
+      }
     >
       <div className="ticket-visual">
         <div className="ticket-lunar-art" aria-hidden="true">
@@ -34,7 +41,11 @@ export function TicketCard({
         </div>
         <div className="ticket-edition">
           <span>{demo ? "ДЕМО-БИЛЕТ" : "ЭЛЕКТРОННЫЙ БИЛЕТ"}</span>
-          <span>№ {String(ticket.ordinal).padStart(2, "0")}</span>
+          <span>
+            {shared
+              ? `ГОСТЕЙ: ${group!.issued}`
+              : `№ ${String(ticket.ordinal).padStart(2, "0")}`}
+          </span>
         </div>
         <h2>{event.title}</h2>
         <p className="ticket-tagline">
@@ -80,22 +91,42 @@ export function TicketCard({
             <strong className="ticket-guest">{name}</strong>
           </div>
           <span className="ticket-admit">
-            БИЛЕТ {ticket.ordinal}
-            {quantity ? ` / ${quantity}` : ""}
+            {shared
+              ? `ГОСТЕЙ: ${group!.issued}`
+              : `БИЛЕТ ${ticket.ordinal}${quantity ? ` / ${quantity}` : ""}`}
           </span>
         </div>
         <div className="ticket-qr-frame">
           <img
             className="ticket-qr"
             src={ticket.qr_image}
-            alt={`QR-код билета ${ticket.ordinal}`}
+            alt={
+              shared
+                ? "QR-код на весь заказ"
+                : `QR-код билета ${ticket.ordinal}`
+            }
             width="320"
             height="320"
           />
         </div>
-        <p className={"ticket-number" + (ticket.used_at ? " ticket-used" : "")}>
-          {ticket.used_at ? "Уже использован" : "Покажите QR-код на входе"}
+        <p className={"ticket-number" + (used ? " ticket-used" : "")}>
+          {used
+            ? shared
+              ? "Все гости уже вошли"
+              : "Уже использован"
+            : "Покажите QR-код на входе"}
         </p>
+        {shared && group && (
+          <div className="ticket-group-status" aria-live="polite">
+            <strong>
+              Вошли {group.checked} из {group.issued} · Осталось{" "}
+              {group.remaining}
+            </strong>
+            <p>
+              Гости могут приходить отдельно. Показывайте один и тот же QR-код.
+            </p>
+          </div>
+        )}
         <div className="ticket-serial-row">
           <div>
             <span className="ticket-label">НОМЕР БИЛЕТА</span>
@@ -103,7 +134,7 @@ export function TicketCard({
           </div>
         </div>
         <a className="ticket-own-link" href={"/ticket/" + ticket.code}>
-          Открыть отдельный билет <ArrowUpRight size={12} />
+          Открыть билет <ArrowUpRight size={12} />
         </a>
         <ContactPhone />
       </div>

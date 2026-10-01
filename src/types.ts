@@ -26,6 +26,7 @@ export type TicketData = {
   ordinal: number;
   used_at: string | null;
   qr_image: string;
+  group?: { issued: number; checked: number; remaining: number };
 };
 export type OrderData = {
   id: string;

@@ -558,6 +558,7 @@ export async function createApp({
     const { order_id, ...ticket } = t;
     res.json({
       ...ticket,
+      group: await store.orderAttendance(order_id),
       unsubscribe_url: await marketing.linkForOrder(order_id),
       event: await store.event(t.event_id),
       qr_image: await QRCode.toDataURL(`${origin}/ticket/${t.code}`, {

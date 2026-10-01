@@ -167,7 +167,7 @@ test("failed SMS and payment review are not reported as delivered or issued", ()
   assert.match(text, /СМС не доставлено/);
 });
 
-test("paid Telegram message contains one numbered direct link per ticket for manual forwarding", () => {
+test("paid Telegram message contains one group ticket link for manual forwarding", () => {
   const tickets = Array.from({ length: 5 }, (_, i) => ({
     ordinal: i + 1,
     code: String(i).repeat(48),
@@ -186,12 +186,12 @@ test("paid Telegram message contains one numbered direct link per ticket for man
     { status: "failed" },
     "https://example.com",
   );
-  for (const ticket of tickets)
-    assert.ok(
-      text.includes(
-        `Билет ${ticket.ordinal}: https://example.com/ticket/${ticket.code}`,
-      ),
-    );
+  assert.ok(text.includes(`https://example.com/ticket/${tickets[0].code}`));
+  assert.equal(
+    (text.match(/https:\/\/example.com\/ticket\//g) || []).length,
+    1,
+  );
+  assert.match(text, /Билетов: 5/);
   assert.doesNotMatch(text, /\/order\//);
   assert.ok(text.length < 4096);
   const pending = telegramOrderText(

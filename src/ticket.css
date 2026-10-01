@@ -330,6 +330,20 @@
   color: #ff8d7a;
   font-weight: 700;
 }
+.ticket-group-status {
+  margin: 16px 0;
+  padding: 14px;
+  border: 1px solid #663333;
+  border-radius: 12px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.ticket-group-status p {
+  margin: 8px 0 0;
+  color: #c9aaa0;
+  font-size: 12px;
+}
 .ticket-serial-row {
   display: flex;
   justify-content: space-between;
