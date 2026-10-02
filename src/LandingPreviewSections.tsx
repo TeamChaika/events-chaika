@@ -386,7 +386,7 @@ export default function LandingPreviewSections({
           ))}
         </div>
         <blockquote className="lp-quote">
-          Эта ночь — не о том, чтобы стать кем-то другим.
+          Эта ночь — не о том, чтобы стать кем-то другим.{" "}
           <br />
           <em>
             Она о том, чтобы показать ту сторону себя,
