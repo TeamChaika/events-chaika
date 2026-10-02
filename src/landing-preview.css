@@ -280,12 +280,6 @@
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-.lp-draft-note {
-  font-size: 11px;
-  color: #a0938d;
-  line-height: 1.7;
-  margin-top: 35px;
-}
 .lp-dress-intro {
   font-size: 16px;
   line-height: 1.9;
@@ -738,10 +732,6 @@
   }
   .lp-stage + .lp-stage {
     margin-top: 38px;
-  }
-  .lp-draft-note {
-    font-size: 10px;
-    margin-top: 26px;
   }
   .lp-dress-intro {
     font-size: 14px;

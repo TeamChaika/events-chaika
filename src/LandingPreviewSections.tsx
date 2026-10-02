@@ -464,10 +464,6 @@ export default function LandingPreviewSections({
               </p>
             </article>
           </div>
-          <p className="lp-draft-note">
-            Текст об организаторах — предварительный. Истории команд и прошлые
-            события добавим после согласования материалов.
-          </p>
         </div>
       </section>
 
