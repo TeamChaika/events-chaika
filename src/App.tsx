@@ -61,7 +61,7 @@ import {
   type LegalCatalog,
 } from "./Legal";
 
-// Review content is loaded only on the separate /test-lending route.
+// Keep the event details in a separate chunk from the hero and checkout.
 const LandingPreviewSections = React.lazy(
   () => import("./LandingPreviewSections"),
 );
@@ -102,7 +102,7 @@ function Countdown({ event }: { event: EventData }) {
     </div>
   );
 }
-function Home({ preview = false }: { preview?: boolean }) {
+function Home() {
   const [events, setEvents] = useState<EventData[]>([]);
   const [config, setConfig] = useState<Config>();
   const [error, setError] = useState("");
@@ -208,7 +208,6 @@ function Home({ preview = false }: { preview?: boolean }) {
         </div>
       ) : event && config ? (
         <EventLanding
-          preview={preview}
           event={event}
           config={config}
           introActive={introActive}
@@ -226,13 +225,11 @@ function Home({ preview = false }: { preview?: boolean }) {
 }
 
 function EventLanding({
-  preview = false,
   event,
   config,
   introActive,
   onArtworkReady,
 }: {
-  preview?: boolean;
   event: EventData;
   config: Config;
   introActive: boolean;
@@ -365,7 +362,7 @@ function EventLanding({
             ))}
           </div>
         </div>
-        {preview && (
+        {event.id === "red-moon" && (
           <React.Suspense
             fallback={
               <div className="loading-screen">
@@ -1021,6 +1018,6 @@ export default function App() {
   ) : path.startsWith("/ticket/") ? (
     <SingleTicket />
   ) : (
-    <Home preview={path === "/test-lending" || path === "/test-lending/"} />
+    <Home />
   );
 }

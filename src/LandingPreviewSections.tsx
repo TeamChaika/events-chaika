@@ -181,9 +181,6 @@ export default function LandingPreviewSections({
   const [look, setLook] = useState<number | null>(null);
   return (
     <div className="lp">
-      <div className="lp-review-note">
-        <span /> Версия для согласования
-      </div>
       <nav className="lp-nav lp-wrap" aria-label="О вечеринке">
         {[
           ["about", "О событии"],
