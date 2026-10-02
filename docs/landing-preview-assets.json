@@ -1,5 +1,5 @@
 {
-  "generation": "Built-in image_gen; fictional temporary DJ portraits, not likenesses of the named performers.",
+  "generation": "Built-in image_gen; fictional portraits retained only as blurred fallback backgrounds, not likenesses of the named performers.",
   "portraits": [
     {
       "name": "dibidabo",
@@ -42,5 +42,16 @@
     "public/assets/landing-preview/dress-6.webp",
     "public/assets/landing-preview/dress-7.webp",
     "public/assets/landing-preview/dress-8.webp"
-  ]
+  ],
+  "posters": {
+    "source": "Six finished posters supplied by the user on 2026-10-02; converted to WebP at original dimensions without cropping.",
+    "assets": [
+      "public/assets/landing-preview/poster-dibidabo.webp",
+      "public/assets/landing-preview/poster-nerak.webp",
+      "public/assets/landing-preview/poster-roma-busha.webp",
+      "public/assets/landing-preview/poster-martin-w.webp",
+      "public/assets/landing-preview/poster-leo-n.webp",
+      "public/assets/landing-preview/poster-johny-t.webp"
+    ]
+  }
 }

@@ -11,15 +11,36 @@ import { dateLabel, money, type EventData } from "./types";
 import "./landing-preview.css";
 
 const asset = (name: string) => `/assets/landing-preview/${name}.webp`;
-const stages = [
+type Artist = { name: string; image: string; poster?: string; time: string };
+const stages: {
+  number: string;
+  name: string;
+  opening: string;
+  artists: Artist[];
+}[] = [
   {
     number: "01",
     name: "Главная сцена",
     opening: "21:00 — 21:40 · Шоу-перформанс",
     artists: [
-      { name: "DIBIDABO", image: "dibidabo", time: "21:40 — 23:00" },
-      { name: "NERAK", image: "nerak", time: "23:00 — 00:30" },
-      { name: "ROMA BUSHA", image: "roma-busha", time: "00:30 — 02:00" },
+      {
+        name: "DIBIDABO",
+        image: "dibidabo",
+        poster: "poster-dibidabo",
+        time: "21:40 — 23:00",
+      },
+      {
+        name: "NERAK",
+        image: "nerak",
+        poster: "poster-nerak",
+        time: "23:00 — 00:30",
+      },
+      {
+        name: "РОМА BUSHA",
+        image: "roma-busha",
+        poster: "poster-roma-busha",
+        time: "00:30 — 02:00",
+      },
     ],
   },
   {
@@ -27,12 +48,54 @@ const stages = [
     name: "Альтернативная сцена",
     opening: "21:00 — 02:00 · Другая сторона ночи",
     artists: [
-      { name: "MARTIN W", image: "martin-w", time: "21:00 — 22:30" },
-      { name: "LEO N", image: "leo-n", time: "22:30 — 00:00" },
-      { name: "JOHNY T", image: "johny-t", time: "00:00 — 02:00" },
+      {
+        name: "MARTIN.W",
+        image: "martin-w",
+        poster: "poster-martin-w",
+        time: "21:00 — 22:30",
+      },
+      {
+        name: "LEON",
+        image: "leo-n",
+        poster: "poster-leo-n",
+        time: "22:30 — 00:00",
+      },
+      {
+        name: "JOHNNY T",
+        image: "johny-t",
+        poster: "poster-johny-t",
+        time: "00:00 — 02:00",
+      },
     ],
   },
 ];
+
+function ArtistArtwork({ artist }: { artist: Artist }) {
+  const [posterFailed, setPosterFailed] = useState(false);
+  const poster = posterFailed ? undefined : artist.poster;
+  return (
+    <div className={`lp-portrait${poster ? "" : " lp-portrait-pending"}`}>
+      <img
+        src={asset(poster || artist.image)}
+        width="800"
+        height="1000"
+        loading="lazy"
+        decoding="async"
+        alt={
+          poster ? `Афиша ${artist.name} — Ночь красной луны, 31 октября` : ""
+        }
+        onError={poster ? () => setPosterFailed(true) : undefined}
+      />
+      {!poster && (
+        <div className="lp-poster-pending-copy">
+          <span>НОЧЬ КРАСНОЙ ЛУНЫ</span>
+          <strong>АФИША СКОРО</strong>
+          <span>{artist.name}</span>
+        </div>
+      )}
+    </div>
+  );
+}
 const looks = [
   "Красный монохром и выразительная маска",
   "Бальная эстетика в современной интерпретации",
@@ -119,7 +182,7 @@ export default function LandingPreviewSections({
   return (
     <div className="lp">
       <div className="lp-review-note">
-        <span /> Версия для согласования · фотографии DJ временные
+        <span /> Версия для согласования
       </div>
       <nav className="lp-nav lp-wrap" aria-label="О вечеринке">
         {[
@@ -229,24 +292,9 @@ export default function LandingPreviewSections({
                 <p>{stage.opening}</p>
               </div>
               <div className="lp-artists">
-                {stage.artists.map((artist, i) => (
+                {stage.artists.map((artist) => (
                   <article className="lp-artist" key={artist.name}>
-                    <div className="lp-portrait">
-                      <img
-                        src={asset(artist.image)}
-                        width="800"
-                        height="1000"
-                        loading="lazy"
-                        decoding="async"
-                        alt={`Временный сгенерированный портрет для блока ${artist.name}; не фотография артиста`}
-                      />
-                      <span className="lp-portrait-index">
-                        {stage.number} / 0{i + 1}
-                      </span>
-                      <span className="lp-portrait-label">
-                        ФОТО НА СОГЛАСОВАНИИ
-                      </span>
-                    </div>
+                    <ArtistArtwork artist={artist} />
                     <div className="lp-artist-caption">
                       <h4>{artist.name}</h4>
                       <span>{artist.time}</span>
@@ -256,10 +304,6 @@ export default function LandingPreviewSections({
               </div>
             </div>
           ))}
-          <p className="lp-draft-note">
-            Расписание — из присланного драфта. Временные портреты сгенерированы
-            и будут заменены фотографиями артистов.
-          </p>
         </div>
       </section>
 
@@ -274,8 +318,6 @@ export default function LandingPreviewSections({
         <div className="lp-heading-row">
           <h2 id="lp-dresscode-title" className="lp-display">
             ДРЕСС-КОД.
-            <br />
-            <em>БЫТЬ СОБОЙ.</em>
           </h2>
           <p className="lp-dress-intro">
             Когда появляется красная луна, наружу выходит то, что обычно скрыто.
@@ -344,7 +386,7 @@ export default function LandingPreviewSections({
           ))}
         </div>
         <blockquote className="lp-quote">
-          <span>«</span>Эта ночь — не о том, чтобы стать кем-то другим.
+          Эта ночь — не о том, чтобы стать кем-то другим.
           <br />
           <em>
             Она о том, чтобы показать ту сторону себя,

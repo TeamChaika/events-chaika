@@ -211,48 +211,52 @@
 }
 .lp-portrait {
   position: relative;
-  aspect-ratio: 4 / 4.6;
+  aspect-ratio: 4 / 5;
   overflow: hidden;
   background: #231516;
 }
-.lp-portrait::after {
+.lp-portrait-pending::after {
   position: absolute;
   content: "";
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(transparent 60%, #0a030a88);
+  background:
+    radial-gradient(ellipse at 20% 15%, #b3222244, transparent 70%),
+    linear-gradient(#13060d44, #0a030acc);
 }
 .lp-portrait img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  object-position: 50% 35%;
+  object-fit: contain;
   display: block;
-  transition:
-    transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1),
-    filter 0.8s;
-  filter: saturate(0.8);
 }
-.lp-artist:hover .lp-portrait img {
-  transform: scale(1.035);
-  filter: saturate(1.05);
+.lp-portrait-pending img {
+  object-fit: cover;
+  transform: scale(1.18);
+  filter: blur(24px) saturate(0.55) brightness(0.6);
 }
-.lp-portrait-index {
+.lp-poster-pending-copy {
   position: absolute;
-  top: 19px;
-  left: 20px;
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  color: #fff9;
-}
-.lp-portrait-label {
-  position: absolute;
+  inset: 0;
   z-index: 1;
-  bottom: 17px;
-  left: 20px;
-  color: #f6e9e0bf;
-  font-size: 8px;
-  letter-spacing: 0.12em;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  text-align: center;
+  padding: 24px;
+}
+.lp-poster-pending-copy span {
+  font-size: 10px;
+  letter-spacing: 0.13em;
+  color: #cbb8b1;
+}
+.lp-poster-pending-copy strong {
+  font-family: "Oswald Variable", sans-serif;
+  font-size: clamp(26px, 3vw, 42px);
+  font-weight: 400;
+  color: #f0ddd6;
 }
 .lp-artist-caption {
   display: flex;
@@ -397,17 +401,8 @@
   font-weight: 400;
   line-height: 1.6;
   letter-spacing: -0.035em;
-  margin: 80px 0 0;
-  padding: 44px 20px 0;
-}
-.lp-quote > span {
-  position: absolute;
-  top: -34px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-family: Georgia, serif;
-  font-size: 90px;
-  color: #c84238;
+  margin: 64px 0 0;
+  padding: 0 20px;
 }
 .lp-quote em {
   font-family: inherit;
@@ -725,44 +720,21 @@
     padding-left: 26px;
   }
   .lp-artists {
-    grid-template-columns: 1fr 1fr;
-    gap: 24px 12px;
-  }
-  .lp-artist:first-child {
-    grid-column: 1 / -1;
-  }
-  .lp-artist:first-child .lp-portrait {
-    aspect-ratio: 1.15;
-  }
-  .lp-artist:first-child .lp-portrait img {
-    object-position: 50% 27%;
-  }
-  .lp-artist:first-child .lp-artist-caption {
-    display: flex;
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 440px;
+    margin-inline: auto;
+    gap: 32px;
   }
   .lp-artist-caption {
+    display: flex;
     padding-top: 12px;
   }
   .lp-artist-caption h4 {
     font-size: clamp(22px, 6.2vw, 32px);
   }
-  .lp-artist:first-child h4 {
-    font-size: 36px;
-  }
   .lp-artist-caption > span {
     margin-top: 7px;
     font-size: 10px;
-  }
-  .lp-portrait-index {
-    top: 13px;
-    left: 12px;
-    font-size: 8px;
-  }
-  .lp-portrait-label {
-    bottom: 10px;
-    left: 10px;
-    font-size: 6px;
-    letter-spacing: 0.07em;
   }
   .lp-stage + .lp-stage {
     margin-top: 38px;
@@ -814,7 +786,7 @@
   }
   .lp-quote {
     font-size: 19px;
-    padding: 33px 0 0;
+    padding: 0;
     margin-top: 60px;
   }
   .lp-quote br {
