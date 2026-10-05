@@ -51,7 +51,7 @@ const stages: {
       {
         name: "MARTIN.W",
         image: "martin-w",
-        poster: "poster-martin-w",
+        poster: "poster-martin-w-20261005",
         time: "21:00 — 22:30",
       },
       {
