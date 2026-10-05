@@ -1898,3 +1898,331 @@ test("production CSP separates public posters, private pages and the Telegram pa
     }
   }
 });
+
+const eventPriceTiers = [
+  { up_to: 50, price: 500000 },
+  { up_to: 150, price: 800000 },
+  { up_to: null, price: 1000000 },
+];
+async function tieredEvent(h, legacyQuantity = 0) {
+  await h.store.run(
+    "UPDATE events SET capacity=300,price_tiers=? WHERE id='red-moon'",
+    JSON.stringify(eventPriceTiers),
+  );
+  if (!legacyQuantity) return;
+  const id = randomUUID();
+  await h.store.run(
+    `INSERT INTO orders(id,access_token,event_id,first_name,last_name,phone,email,quantity,unit_price,total,status,method,mode,created_at,expires_at,buyer_session,idempotency,request_hash,webhook_token)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    id,
+    id,
+    "red-moon",
+    "Legacy",
+    "Guest",
+    "+79990000000",
+    "qa@example.com",
+    legacyQuantity,
+    500000,
+    legacyQuantity * 500000,
+    "paid",
+    "sbp",
+    "demo",
+    new Date().toISOString(),
+    new Date().toISOString(),
+    id,
+    id,
+    id,
+    id,
+  );
+  return id;
+}
+
+test("price tiers include historical sales and split orders at ticket 50 and 150", async (t) => {
+  const h = await harness(t);
+  const legacyId = await tieredEvent(h, 47);
+  const q = (await h.request("/events/red-moon/quote?quantity=5")).body;
+  assert.deepEqual(
+    q.lines.map((l) => [l.quantity, l.unit_price]),
+    [
+      [3, 500000],
+      [2, 800000],
+    ],
+  );
+  assert.equal(q.total, 3100000);
+  const order = await h.order({
+    ...guest,
+    quantity: 5,
+    expected_total: q.total,
+    total: 1,
+    unit_price: 1,
+  });
+  assert.equal(order.status, 201);
+  assert.equal(order.body.total, 3100000);
+  assert.deepEqual(order.body.price_breakdown, q.lines);
+  assert.equal((await h.request("/events")).body[0].price, 800000);
+  const legacy = await h.store.get(
+    "SELECT total,price_breakdown FROM orders WHERE id=?",
+    legacyId,
+  );
+  assert.equal(legacy.total, 23500000);
+  assert.equal(legacy.price_breakdown, null);
+  // Historical tickets may have been sold before tiers were introduced.
+  await h.store.run(
+    "UPDATE orders SET quantity=148,total=74000000 WHERE id=?",
+    legacyId,
+  );
+  await h.store.run(
+    "UPDATE orders SET status='expired' WHERE id=?",
+    order.body.id,
+  );
+  const boundary = (await h.request("/events/red-moon/quote?quantity=5")).body;
+  assert.deepEqual(
+    boundary.lines.map((l) => [l.quantity, l.unit_price]),
+    [
+      [2, 800000],
+      [3, 1000000],
+    ],
+  );
+  assert.equal(boundary.total, 4600000);
+});
+
+test("concurrent orders cannot both reserve the last cheap ticket; stale quotes do not create orders", async (t) => {
+  const h = await harness(t);
+  await tieredEvent(h, 49);
+  const request = { ...guest, quantity: 1, expected_total: 500000 };
+  const keys = [randomUUID(), randomUUID()];
+  const results = await Promise.all(keys.map((key) => h.order(request, key)));
+  assert.deepEqual(results.map((r) => r.status).sort(), [201, 409]);
+  const winner = results.findIndex((r) => r.status === 201);
+  assert.equal(results[1 - winner].body.code, "PRICE_CHANGED");
+  const retry = await h.order(request, keys[winner]);
+  assert.equal(retry.status, 200);
+  assert.equal(retry.body.id, results[winner].body.id);
+  assert.equal(retry.body.total, 500000);
+  assert.equal((await h.order({ ...guest, quantity: 1 })).status, 409);
+  assert.equal((await h.store.get("SELECT COUNT(*) n FROM orders")).n, 2);
+  const corrected = await h.order(
+    { ...request, expected_total: 800000 },
+    keys[1 - winner],
+  );
+  assert.equal(corrected.status, 201);
+  assert.equal(corrected.body.total, 800000);
+});
+
+test("expiry releases its own tier and a late payment cannot take a sold cheap place", async (t) => {
+  const h = await harness(t);
+  await tieredEvent(h, 49);
+  const cheap = await h.order({
+    ...guest,
+    quantity: 1,
+    expected_total: 500000,
+  });
+  const expensive = await h.order({
+    ...guest,
+    quantity: 1,
+    expected_total: 800000,
+  });
+  await h.store.markPaid(expensive.body.id);
+  await h.store.run(
+    "UPDATE orders SET status='expired' WHERE id=?",
+    cheap.body.id,
+  );
+  assert.equal(
+    (await h.request("/events/red-moon/quote?quantity=1")).body.total,
+    500000,
+  );
+  const replacement = await h.order({
+    ...guest,
+    quantity: 1,
+    expected_total: 500000,
+  });
+  await h.store.markPaid(replacement.body.id);
+  await h.store.markPaid(cheap.body.id);
+  assert.equal(
+    (await h.store.get("SELECT status FROM orders WHERE id=?", cheap.body.id))
+      .status,
+    "paid_review",
+  );
+  assert.equal(
+    (
+      await h.store.get(
+        "SELECT COUNT(*) n FROM tickets WHERE order_id=?",
+        cheap.body.id,
+      )
+    ).n,
+    0,
+  );
+  assert.equal(
+    (
+      await h.store.get(
+        "SELECT total FROM orders WHERE id=?",
+        expensive.body.id,
+      )
+    ).total,
+    800000,
+  );
+  assert.equal(
+    (await h.request("/events/red-moon/quote?quantity=1")).body.total,
+    800000,
+  );
+});
+
+test("legacy late payments honor the old amount only if the old tier is still available", async (t) => {
+  const h = await harness(t);
+  const pending = await h.order({ ...guest, quantity: 1 });
+  await h.store.run(
+    "UPDATE orders SET status='expired' WHERE id=?",
+    pending.body.id,
+  );
+  await tieredEvent(h, 49);
+  await h.store.markPaid(pending.body.id);
+  const paid = await h.store.get(
+    "SELECT * FROM orders WHERE id=?",
+    pending.body.id,
+  );
+  assert.equal(paid.status, "paid");
+  assert.equal(paid.total, 500000);
+  assert.equal(JSON.parse(paid.price_breakdown)[0].tier, 0);
+  assert.equal(
+    (await h.request("/events/red-moon/quote?quantity=1")).body.total,
+    800000,
+  );
+});
+
+test("test, invite, voided and sandbox tickets do not consume promotional quotas, cash does", async (t) => {
+  const h = await harness(t);
+  const legacy = await tieredEvent(h, 49);
+  for (const condition of [
+    "is_test=1",
+    "method='invite'",
+    "voided_at='2026-01-01'",
+    "mode='sandbox'",
+  ]) {
+    await h.store.run(
+      "UPDATE orders SET is_test=0,method='sbp',voided_at=NULL,mode='demo' WHERE id=?",
+      legacy,
+    );
+    await h.store.run(`UPDATE orders SET ${condition} WHERE id=?`, legacy);
+    assert.equal(
+      (await h.request("/events/red-moon/quote?quantity=2")).body.total,
+      1000000,
+    );
+  }
+  await h.store.run(
+    "UPDATE orders SET is_test=0,method='sbp',voided_at=NULL,mode='demo' WHERE id=?",
+    legacy,
+  );
+  await h.login();
+  const cash = await h.request("/admin/issue", {
+    method: "POST",
+    key: randomUUID(),
+    body: {
+      ...guest,
+      quantity: 2,
+      method: "cash",
+      cash_received: true,
+      expected_total: 1300000,
+    },
+  });
+  assert.equal(cash.status, 201);
+  const issued = await h.store.get("SELECT * FROM orders WHERE method='cash'");
+  assert.equal(issued.total, 1300000);
+  assert.equal(issued.status, "paid");
+  assert.equal(
+    (await h.request("/events/red-moon/quote?quantity=1")).body.total,
+    800000,
+  );
+});
+
+test("price policy survives ordinary admin edits and cannot be redefined after reservations", async (t) => {
+  const h = await harness(t);
+  await h.login();
+  const e = (await h.request("/events")).body[0];
+  const body = {
+    ...e,
+    capacity: 300,
+    published: true,
+    sales_open: true,
+    price_tiers: eventPriceTiers,
+  };
+  assert.equal(
+    (await h.request("/admin/events/red-moon", { method: "PUT", body })).status,
+    200,
+  );
+  await h.order({ ...guest, expected_total: 1000000 });
+  const changed = await h.request("/admin/events/red-moon", {
+    method: "PUT",
+    body: { ...body, price_tiers: null },
+  });
+  assert.equal(changed.status, 409);
+  const { price_tiers, ...ordinary } = body;
+  assert.equal(
+    (
+      await h.request("/admin/events/red-moon", {
+        method: "PUT",
+        body: { ...ordinary, time: "21:00" },
+      })
+    ).status,
+    200,
+  );
+  assert.deepEqual(
+    (await h.request("/events")).body[0].price_tiers,
+    price_tiers,
+  );
+});
+
+test(
+  "PostgreSQL serializes the last tier place across two application instances",
+  { skip: !process.env.TEST_DATABASE_URL },
+  async (t) => {
+    const first = await harness(t);
+    await tieredEvent(first, 49);
+    const second = await createApp({
+      databaseUrl: first.databaseUrl,
+      demo: true,
+      origin,
+      testing: true,
+      legalDocuments: fixtureLegalDocuments,
+    });
+    const server = second.app.listen(0, "127.0.0.1");
+    await new Promise((resolve) => server.once("listening", resolve));
+    try {
+      const base = `http://127.0.0.1:${server.address().port}`;
+      const config = await fetch(base + "/api/config");
+      const cookie = config.headers
+        .getSetCookie()
+        .map((c) => c.split(";")[0])
+        .join("; ");
+      const input = { ...guest, quantity: 1, expected_total: 500000 };
+      const responses = await Promise.all([
+        first.order(input),
+        fetch(base + "/api/orders", {
+          method: "POST",
+          headers: {
+            Origin: origin,
+            Cookie: cookie,
+            "Content-Type": "application/json",
+            "Idempotency-Key": randomUUID(),
+          },
+          body: JSON.stringify({ ...input, acceptances: first.acceptances }),
+        }).then(async (r) => ({ status: r.status, body: await r.json() })),
+      ]);
+      assert.deepEqual(responses.map((r) => r.status).sort(), [201, 409]);
+      assert.equal((await second.store.quote("red-moon", 1)).total, 800000);
+      const winner = responses.find((r) => r.status === 201).body;
+      await second.store.markPaid(winner.id);
+      assert.equal(
+        (
+          await first.store.get(
+            "SELECT total FROM orders WHERE id=?",
+            winner.id,
+          )
+        ).total,
+        500000,
+      );
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+      await second.close();
+    }
+  },
+);

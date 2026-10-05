@@ -37,7 +37,7 @@ export function telegramOrderText(order, event, tickets, sms, origin) {
       creating: "Ожидает оплаты",
       expired: "Срок оплаты истёк",
       cancelled: "Отменён",
-      paid_review: "Оплачено, требуется проверка мест",
+      paid_review: "Оплачено, требуется проверка заказа",
       unknown: "Оплата проверяется",
     }[order.status] || "Требует проверки";
   const smsStatus =

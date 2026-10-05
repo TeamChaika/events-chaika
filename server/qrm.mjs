@@ -1,3 +1,4 @@
+import { orderPriceLines } from "./pricing.mjs";
 import { z } from "zod";
 export class ProviderError extends Error {
   constructor(outcome, message) {
@@ -121,6 +122,7 @@ export async function checkMerchant(mode) {
   return m;
 }
 export async function createPayment(order, event, origin) {
+  const lines = orderPriceLines(order);
   const merchant = await checkMerchant(order.mode);
   const input = {
     sum: order.total,
@@ -134,15 +136,13 @@ export async function createPayment(order, event, origin) {
     merchant.requires_receipt ||
     merchant.is_nomenclature
       ? {
-          nomenclature: [
-            {
-              name: `Билет: ${event.title}`.slice(0, 100),
-              count: order.quantity,
-              price: order.unit_price,
-              amount: order.total,
-              payment_method: 4,
-            },
-          ],
+          nomenclature: lines.map((line) => ({
+            name: `Билет: ${event.title}`.slice(0, 100),
+            count: line.quantity,
+            price: line.unit_price,
+            amount: line.total,
+            payment_method: 4,
+          })),
         }
       : {}),
   };

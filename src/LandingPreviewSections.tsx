@@ -9,24 +9,20 @@ import {
 } from "lucide-react";
 import { dateLabel, money, type EventData } from "./types";
 import "./landing-preview.css";
+import { PriceSchedule } from "./Pricing";
 
 const asset = (name: string) => `/assets/landing-preview/${name}.webp`;
 type Artist = { name: string; image: string; poster?: string; time: string };
-const stages: {
-  number: string;
-  name: string;
-  opening: string;
-  artists: Artist[];
-}[] = [
+const stages = [
   {
     number: "01",
-    name: "Главная сцена",
+    name: "Программа ночи",
     opening: "21:00 — 21:40 · Шоу-перформанс",
     artists: [
       {
-        name: "DIBIDABO",
-        image: "dibidabo",
-        poster: "poster-dibidabo",
+        name: "LEO N",
+        image: "leo-n",
+        poster: "poster-leo-n",
         time: "21:40 — 23:00",
       },
       {
@@ -36,35 +32,16 @@ const stages: {
         time: "23:00 — 00:30",
       },
       {
-        name: "РОМА BUSHA",
-        image: "roma-busha",
-        poster: "poster-roma-busha",
+        name: "DIBIDABO",
+        image: "dibidabo",
+        poster: "poster-dibidabo",
         time: "00:30 — 02:00",
       },
-    ],
-  },
-  {
-    number: "02",
-    name: "Альтернативная сцена",
-    opening: "21:00 — 02:00 · Другая сторона ночи",
-    artists: [
       {
-        name: "MARTIN.W",
-        image: "martin-w",
-        poster: "poster-martin-w-20261005",
-        time: "21:00 — 22:30",
-      },
-      {
-        name: "LEON",
-        image: "leo-n",
-        poster: "poster-leo-n",
-        time: "22:30 — 00:00",
-      },
-      {
-        name: "JOHNNY T",
-        image: "johny-t",
-        poster: "poster-johny-t",
-        time: "00:00 — 02:00",
+        name: "Roma Busha",
+        image: "roma-busha",
+        poster: "poster-roma-busha",
+        time: "02:00 — 03:00",
       },
     ],
   },
@@ -195,6 +172,19 @@ export default function LandingPreviewSections({
           </a>
         ))}
       </nav>
+      {event.price_tiers && (
+        <section
+          className="lp-pricing lp-wrap"
+          aria-labelledby="lp-pricing-title"
+        >
+          <h2 id="lp-pricing-title">Билеты</h2>
+          <PriceSchedule tiers={event.price_tiers} />
+          <p>
+            Цена растёт по мере продажи билетов. Итоговая стоимость вашего
+            заказа — в форме покупки.
+          </p>
+        </section>
+      )}
 
       <section
         id="about"
@@ -222,24 +212,23 @@ export default function LandingPreviewSections({
             </p>
             <p>
               Это пространство, где встречаются музыка, люди и моменты, которые
-              невозможно повторить. Два танцпола, одна ночь и миллион
-              впечатлений.
+              невозможно повторить. Одна сцена, одна ночь и миллион впечатлений.
             </p>
           </div>
         </div>
         <div className="lp-facts">
           <div>
-            <strong>02</strong>
+            <strong>01</strong>
             <span>
-              ТАНЦПОЛА
+              ТАНЦПОЛ
               <br />
-              <small>Два звучания одной ночи</small>
+              <small>Одна общая энергия</small>
             </span>
           </div>
           <div>
-            <strong>06</strong>
+            <strong>04</strong>
             <span>
-              ДИДЖЕЕВ
+              ДИДЖЕЯ
               <br />
               <small>От первого сета до финала</small>
             </span>
@@ -272,7 +261,7 @@ export default function LandingPreviewSections({
             </h2>
             <div className="lp-section-aside">
               <p>
-                Две сцены. Разные ритмы.
+                Четыре артиста. До трёх утра.
                 <br />
                 Одна общая энергия.
               </p>
@@ -383,8 +372,7 @@ export default function LandingPreviewSections({
           ))}
         </div>
         <blockquote className="lp-quote">
-          Эта ночь — не о том, чтобы стать кем-то другим.{" "}
-          <br />
+          Эта ночь — не о том, чтобы стать кем-то другим. <br />
           <em>
             Она о том, чтобы показать ту сторону себя,
             <br className="lp-desktop-break" /> которая обычно остаётся

@@ -22,11 +22,13 @@ import {
   FileCheck2,
 } from "lucide-react";
 import { Brand, ErrorNotice, Spinner, Modal, GuestFields } from "./ui";
+import { PriceSchedule, PriceBreakdown, usePriceQuote } from "./Pricing";
 import { GuestSearch } from "./GuestSearch";
 import { AcceptanceHistory } from "./Legal";
 import { OrderManagement } from "./OrderManagement";
 import {
   api,
+  ApiError,
   money,
   dateLabel,
   statusLabel,
@@ -1078,14 +1080,15 @@ function EventEditor({
         </div>
         <div className="form-row triple">
           <label>
-            Цена, ₽
+            {e?.price_tiers ? "Базовая цена, ₽" : "Цена, ₽"}
             <input
               type="number"
               name="price"
               min="1"
               max="1000000"
               step="0.01"
-              defaultValue={e ? e.price / 100 : 5000}
+              defaultValue={e ? (e.base_price ?? e.price) / 100 : 5000}
+              readOnly={Boolean(e?.price_tiers)}
               required
             />
           </label>
@@ -1147,8 +1150,11 @@ function EventEditor({
           </label>
         </div>
         <p className="muted small-text">
-          Изменение цены применяется только к новым заказам.
+          {e?.price_tiers
+            ? "Цена рассчитывается автоматически по ступеням. Уже оформленные заказы сохраняют стоимость."
+            : "Изменение цены применяется только к новым заказам."}
         </p>
+        {e?.price_tiers && <PriceSchedule tiers={e.price_tiers} />}
         <ErrorNotice text={error} />
         <button className="button primary full" disabled={busy || uploading}>
           {busy || uploading ? <Spinner /> : <Check size={18} />}Сохранить
@@ -1172,8 +1178,12 @@ function IssueForm({
     [error, setError] = useState(""),
     [url, setUrl] = useState("");
   const key = useRef(crypto.randomUUID());
+  const [eventId, setEventId] = useState(events[0]?.id || "");
+  const [quantity, setQuantity] = useState(1);
+  const { quote, quoteError, refreshQuote } = usePriceQuote(eventId, quantity);
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (busy || (method === "cash" && !quote)) return;
     setBusy(true);
     setError("");
     const f = new FormData(e.currentTarget);
@@ -1185,6 +1195,7 @@ function IssueForm({
           ...Object.fromEntries(f),
           quantity: Number(f.get("quantity")),
           method,
+          ...(method === "cash" ? { expected_total: quote!.total } : {}),
           cash_received: f.get("cash_received") === "on",
         }),
       });
@@ -1192,6 +1203,7 @@ function IssueForm({
       saved();
     } catch (e) {
       setError((e as Error).message);
+      if (e instanceof ApiError && e.code === "PRICE_CHANGED") refreshQuote();
     } finally {
       setBusy(false);
     }
@@ -1239,7 +1251,12 @@ function IssueForm({
           </div>
           <label>
             Мероприятие
-            <select name="event_id">
+            <select
+              name="event_id"
+              value={eventId}
+              disabled={busy}
+              onChange={(e) => setEventId(e.target.value)}
+            >
               {events.map((e) => (
                 <option key={e.id} value={e.id}>
                   {e.title} · {money(e.price)}
@@ -1255,10 +1272,37 @@ function IssueForm({
               type="number"
               min="1"
               max="10"
-              defaultValue="1"
+              value={quantity}
+              disabled={busy}
+              onChange={(e) =>
+                setQuantity(
+                  Math.min(10, Math.max(1, Number(e.target.value) || 1)),
+                )
+              }
               required
             />
           </label>
+          {method === "cash" && (
+            <>
+              <PriceBreakdown quote={quote} />
+              {quote && (
+                <div className="checkout-total">
+                  <span>К получению</span>
+                  <strong>{money(quote.total)}</strong>
+                </div>
+              )}
+              <ErrorNotice text={quoteError || ""} />
+              {quoteError && (
+                <button
+                  className="text-link"
+                  type="button"
+                  onClick={refreshQuote}
+                >
+                  Обновить стоимость
+                </button>
+              )}
+            </>
+          )}
           {method === "cash" ? (
             <label className="checkbox-label">
               <input name="cash_received" type="checkbox" required />
@@ -1270,7 +1314,10 @@ function IssueForm({
             </p>
           )}
           <ErrorNotice text={error} />
-          <button className="button primary full" disabled={busy}>
+          <button
+            className="button primary full"
+            disabled={busy || (method === "cash" && !quote)}
+          >
             {busy ? <Spinner /> : <Ticket size={18} />}Выпустить билеты
           </button>
         </form>

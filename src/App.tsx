@@ -17,6 +17,7 @@ import {
   Download,
   LoaderCircle,
 } from "lucide-react";
+import { usePriceQuote, PriceBreakdown } from "./Pricing";
 import { Admin } from "./Admin";
 import { Team } from "./Team";
 import {
@@ -26,6 +27,7 @@ import {
 } from "./attribution";
 import {
   api,
+  ApiError,
   money,
   dateLabel,
   statusLabel,
@@ -300,7 +302,7 @@ function EventLanding({
               )}
             </h1>
             <p className="hero-description">
-              <span>Одна ночь. Два танцпола.</span>
+              <span>Одна ночь. Одна сцена.</span>
               <span>Красная луна. Иная реальность.</span>
             </p>
             <div className="event-meta">
@@ -356,7 +358,7 @@ function EventLanding({
           <div>
             {Array.from({ length: 5 }, (_, i) => (
               <span key={i}>
-                ОДНА НОЧЬ. ДВА ТАНЦПОЛА. <i /> КРАСНАЯ ЛУНА. ИНАЯ РЕАЛЬНОСТЬ.
+                ОДНА НОЧЬ. ОДНА СЦЕНА. <i /> КРАСНАЯ ЛУНА. ИНАЯ РЕАЛЬНОСТЬ.
                 <i />
               </span>
             ))}
@@ -418,6 +420,7 @@ function Checkout({
     [loading, setLoading] = useState(false),
     [error, setError] = useState("");
   const key = useRef(crypto.randomUUID());
+  const { quote, quoteError, refreshQuote } = usePriceQuote(event.id, quantity);
   const [legal, setLegal] = useState<LegalCatalog>();
   const [legalError, setLegalError] = useState("");
   const [accepted, setAccepted] = useState({
@@ -445,7 +448,14 @@ function Checkout({
     );
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (loading || !legalReady || !accepted.terms || !accepted.consent) return;
+    if (
+      loading ||
+      !quote ||
+      !legalReady ||
+      !accepted.terms ||
+      !accepted.consent
+    )
+      return;
     setLoading(true);
     setError("");
     const form = new FormData(e.currentTarget);
@@ -457,6 +467,7 @@ function Checkout({
           ...Object.fromEntries(form),
           event_id: event.id,
           quantity,
+          expected_total: quote.total,
           attribution: orderAttribution(event.id),
           acceptances: Object.fromEntries(
             ["terms", "consent", "marketing"].map((slug) => [
@@ -472,6 +483,7 @@ function Checkout({
       location.href = "/order/" + order.access_token;
     } catch (e) {
       setError((e as Error).message);
+      if (e instanceof ApiError && e.code === "PRICE_CHANGED") refreshQuote();
       setLoading(false);
     }
   }
@@ -491,13 +503,17 @@ function Checkout({
         <div className="quantity-row">
           <div>
             <strong>Количество билетов</strong>
-            <span>{money(event.price)} за гостя</span>
+            <span>
+              {event.price_tiers
+                ? "Стоимость зависит от ценовой ступени"
+                : `${money(event.price)} за гостя`}
+            </span>
           </div>
           <div className="stepper">
             <button
               type="button"
               aria-label="Уменьшить количество"
-              disabled={quantity <= 1}
+              disabled={loading || quantity <= 1}
               onClick={() => setQuantity(quantity - 1)}
             >
               <Minus size={17} />
@@ -506,13 +522,20 @@ function Checkout({
             <button
               type="button"
               aria-label="Увеличить количество"
-              disabled={quantity >= Math.min(10, event.available)}
+              disabled={loading || quantity >= Math.min(10, event.available)}
               onClick={() => setQuantity(quantity + 1)}
             >
               <Plus size={17} />
             </button>
           </div>
         </div>
+        <PriceBreakdown quote={quote} />
+        <ErrorNotice text={quoteError || ""} />
+        {quoteError && (
+          <button type="button" className="text-link" onClick={refreshQuote}>
+            Обновить стоимость
+          </button>
+        )}
         <div className="checkout-legal">
           {!legal && !legalError && (
             <p role="status" className="checkout-legal-note">
@@ -599,7 +622,7 @@ function Checkout({
         </div>
         <div className="checkout-total">
           <span>К оплате</span>
-          <strong>{money(event.price * quantity)}</strong>
+          <strong>{quote ? money(quote.total) : "—"}</strong>
         </div>
         <ErrorNotice text={error} />
         {(config.demo || config.paymentMode === "sandbox") && (
@@ -613,6 +636,7 @@ function Checkout({
           className="button primary full"
           disabled={
             loading ||
+            !quote ||
             !config.paymentReady ||
             !legalReady ||
             !accepted.terms ||

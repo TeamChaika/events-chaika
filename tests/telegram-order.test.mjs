@@ -162,7 +162,7 @@ test("failed SMS and payment review are not reported as delivered or issued", ()
     [],
     { status: "failed" },
   );
-  assert.match(text, /требуется проверка мест/);
+  assert.match(text, /требуется проверка заказа/);
   assert.match(text, /Билеты ещё не выпущены/);
   assert.match(text, /СМС не доставлено/);
 });

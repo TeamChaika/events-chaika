@@ -1,14 +1,20 @@
+import { allocate, readTiers, tierUsage, orderPriceLines } from "./pricing.mjs";
 import { openDatabase } from "./database.mjs";
 import { randomBytes, randomUUID } from "node:crypto";
 
 export const token = () => randomBytes(24).toString("hex");
 export class AppError extends Error {
-  constructor(status, message) {
+  constructor(status, message, code) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
-export async function openStore(path = "./data/events.sqlite", databaseUrl) {
+export async function openStore(
+  path = "./data/events.sqlite",
+  databaseUrl,
+  pricingMode = "live",
+) {
   const db = await openDatabase(path, databaseUrl);
   const schema = `
     CREATE TABLE IF NOT EXISTS events (
@@ -125,6 +131,15 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
           "ALTER TABLE events ADD COLUMN hero_image TEXT NOT NULL DEFAULT '/assets/red-moon.png'",
         );
       }
+      if (
+        db.kind === "postgres" ||
+        !(await db.all("PRAGMA table_info(events)")).some(
+          (c) => c.name === "price_tiers",
+        )
+      )
+        await db.exec(
+          `ALTER TABLE events ADD COLUMN ${db.kind === "postgres" ? "IF NOT EXISTS " : ""}price_tiers TEXT`,
+        );
       const deliveryColumns = [
         ["provider_id", "TEXT"],
         ["provider_status", "INTEGER"],
@@ -140,6 +155,7 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
           `ALTER TABLE team_members ADD COLUMN ${db.kind === "postgres" ? "IF NOT EXISTS " : ""}access_group_id TEXT`,
         );
       const orderColumns = [
+        ["price_breakdown", "TEXT"],
         ["is_test", "INTEGER NOT NULL DEFAULT 0"],
         ["voided_at", "TEXT"],
         ["void_reason", "TEXT"],
@@ -194,11 +210,37 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
         id,
       )
     ).count;
+  const pricingOrders = (id, excludeId = "") =>
+    all(
+      "SELECT quantity,price_breakdown FROM orders WHERE event_id=? AND id!=? AND mode=? AND is_test=0 AND voided_at IS NULL AND method!='invite' AND status IN ('creating','pending','unknown','paid')",
+      id,
+      excludeId,
+      pricingMode,
+    );
+  const quote = async (id, quantity) => {
+    const e = await get("SELECT * FROM events WHERE id=?", id);
+    if (!e) throw new AppError(404, "Мероприятие не найдено");
+    const tiers = readTiers(e.price_tiers);
+    const lines = tiers
+      ? allocate(tiers, tierUsage(tiers, await pricingOrders(id)), quantity)
+      : [{ quantity, unit_price: e.price, total: e.price * quantity }];
+    return {
+      quantity,
+      lines,
+      total: lines.reduce((sum, line) => sum + line.total, 0),
+    };
+  };
   const event = async (id) => {
     const e = await get("SELECT * FROM events WHERE id=?", id);
-    return e
-      ? { ...e, available: Math.max(0, e.capacity - (await reserved(id))) }
-      : null;
+    if (!e) return null;
+    const tiers = readTiers(e.price_tiers);
+    return {
+      ...e,
+      base_price: e.price,
+      price_tiers: tiers,
+      price: tiers ? (await quote(id, 1)).total : e.price,
+      available: Math.max(0, e.capacity - (await reserved(id))),
+    };
   };
   const enqueue = async (id, kind) => {
     for (const ch of ["created", "review"].includes(kind)
@@ -252,6 +294,49 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
         );
         await enqueue(id, "review");
         return;
+      }
+      if (
+        ["expired", "cancelled", "failed"].includes(o.status) &&
+        !o.is_test &&
+        o.mode === pricingMode &&
+        o.method !== "invite"
+      ) {
+        const tiers = readTiers(
+          (await get("SELECT price_tiers FROM events WHERE id=?", o.event_id))
+            .price_tiers,
+        );
+        if (tiers) {
+          const used = tierUsage(tiers, await pricingOrders(o.event_id, o.id));
+          const lines = o.price_breakdown
+            ? orderPriceLines(o)
+            : allocate(tiers, used, o.quantity);
+          const unavailable = lines.some((line) => {
+            const upper = tiers[line.tier].up_to;
+            return (
+              upper !== null &&
+              used[line.tier] + line.quantity >
+                upper - (tiers[line.tier - 1]?.up_to || 0)
+            );
+          });
+          if (
+            unavailable ||
+            lines.reduce((sum, line) => sum + line.total, 0) !== o.total
+          ) {
+            await run(
+              "UPDATE orders SET status='paid_review',paid_at=?,diagnostic='Поздняя оплата: ценовая ступень уже занята, требуется проверка' WHERE id=?",
+              new Date().toISOString(),
+              id,
+            );
+            await enqueue(id, "review");
+            return;
+          }
+          if (!o.price_breakdown)
+            await run(
+              "UPDATE orders SET price_breakdown=? WHERE id=?",
+              JSON.stringify(lines),
+              id,
+            );
+        }
       }
       if (o.status === "paid_review") return;
       await run(
@@ -514,6 +599,7 @@ export async function openStore(path = "./data/events.sqlite", databaseUrl) {
     audit,
     event,
     reserved,
+    quote,
     enqueue,
     markPaid,
     checkin,

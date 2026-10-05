@@ -14,6 +14,7 @@ import {
   readStatus,
   checkMerchant,
 } from "./qrm.mjs";
+import { priceTiersSchema, orderPriceLines } from "./pricing.mjs";
 import { channelReady, processOutbox } from "./delivery.mjs";
 import { checkSmsAero } from "./smsaero.mjs";
 import { telegram } from "./telegram.mjs";
@@ -75,6 +76,7 @@ const eventSchema = z.object({
   venue: z.string().trim().min(2).max(100),
   address: z.string().trim().min(2).max(200),
   price: z.number().int().min(100).max(100000000),
+  price_tiers: priceTiersSchema.nullable().optional(),
   capacity: z.number().int().min(1).max(100000),
   description: z.string().trim().max(3000),
   dresscode: z.string().max(200),
@@ -117,7 +119,7 @@ export async function createApp({
     );
   if (process.env.REQUIRE_POSTGRES === "true" && !databaseUrl)
     throw new Error("DATABASE_URL is required on ephemeral hosting");
-  const store = await openStore(dbPath, databaseUrl);
+  const store = await openStore(dbPath, databaseUrl, demo ? "demo" : "live");
   const marketing = marketingService(store);
   const promotion = promotionService(store, origin);
   let legal;
@@ -308,6 +310,29 @@ export async function createApp({
       ),
     ),
   );
+  app.get("/api/events/:id/quote", async (req, res) => {
+    const quantity = z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(10)
+      .parse(req.query.quantity);
+    const quote = await store.transaction(async () => {
+      const e = await store.event(req.params.id);
+      if (
+        !e ||
+        (!req.staff &&
+          (!e.published ||
+            !e.sales_open ||
+            new Date(`${e.date}T${e.time}:00+03:00`) <= new Date()))
+      )
+        throw new AppError(409, "Продажа билетов закрыта");
+      if (e.available < quantity)
+        throw new AppError(409, "Недостаточно свободных билетов");
+      return store.quote(e.id, quantity);
+    });
+    res.json(quote);
+  });
   app.get("/api/legal", (_req, res) => res.json(legal.summary()));
   app.get("/api/marketing/:token", async (req, res) => {
     res.json(await marketing.status(req.params.token));
@@ -365,6 +390,7 @@ export async function createApp({
       last_name: o.last_name,
       quantity: o.quantity,
       unit_price: o.unit_price,
+      price_breakdown: orderPriceLines(o),
       total: o.total,
       status: o.status,
       voided_at: o.voided_at,
@@ -404,6 +430,12 @@ export async function createApp({
     if (!buyer || !/^[a-f0-9]{48}$/.test(buyer))
       throw new AppError(400, "Обновите страницу перед покупкой");
     const key = z.uuid().parse(req.headers["idempotency-key"]);
+    const expectedTotal = z
+      .number()
+      .int()
+      .nonnegative()
+      .optional()
+      .parse(req.body.expected_total);
     const acceptanceInput = Object.fromEntries(
       ["terms", "consent"].map((kind) => [
         kind,
@@ -428,6 +460,9 @@ export async function createApp({
     const requestHash = hash(
       JSON.stringify({
         input,
+        ...(expectedTotal === undefined
+          ? {}
+          : { expected_total: expectedTotal }),
         acceptances: acceptanceInput,
         ...(req.body.attribution ? { attribution: req.body.attribution } : {}),
       }),
@@ -459,13 +494,24 @@ export async function createApp({
         throw new AppError(409, "Продажа билетов закрыта");
       if (e.available < input.quantity)
         throw new AppError(409, "Недостаточно свободных билетов");
+      const price = await store.quote(e.id, input.quantity);
+      if (
+        (e.price_tiers && expectedTotal === undefined) ||
+        (expectedTotal !== undefined && expectedTotal !== price.total)
+      )
+        throw new AppError(
+          409,
+          "Стоимость изменилась. Проверьте обновлённую сумму и подтвердите оплату ещё раз.",
+          "PRICE_CHANGED",
+        );
       const id = randomUUID();
       const values = {
         id,
         access_token: token(),
         ...input,
-        unit_price: e.price,
-        total: e.price * input.quantity,
+        unit_price: price.lines[0].unit_price,
+        total: price.total,
+        price_breakdown: e.price_tiers ? JSON.stringify(price.lines) : null,
         status: demo ? "pending" : "creating",
         method: "sbp",
         mode: mode(),
@@ -722,6 +768,7 @@ export async function createApp({
     const values = {
       id,
       ...data,
+      price_tiers: data.price_tiers ? JSON.stringify(data.price_tiers) : null,
       published: Number(data.published),
       sales_open: Number(data.sales_open),
       created_at: now(),
@@ -744,8 +791,27 @@ export async function createApp({
           409,
           "Лимит меньше количества проданных и зарезервированных билетов",
         );
+      if (
+        data.price_tiers !== undefined &&
+        JSON.stringify(data.price_tiers) !== JSON.stringify(e.price_tiers) &&
+        (await store.get(
+          "SELECT id FROM orders WHERE event_id=? AND price_breakdown IS NOT NULL LIMIT 1",
+          e.id,
+        ))
+      )
+        throw new AppError(
+          409,
+          "Ценовые ступени уже используются заказами. Нельзя изменять их границы или цены.",
+        );
       const values = {
         ...data,
+        ...(data.price_tiers === undefined
+          ? {}
+          : {
+              price_tiers: data.price_tiers
+                ? JSON.stringify(data.price_tiers)
+                : null,
+            }),
         published: Number(data.published),
         sales_open: Number(data.sales_open),
       };
@@ -767,13 +833,27 @@ export async function createApp({
     if (method === "cash" && req.body.cash_received !== true)
       throw new AppError(400, "Подтвердите получение наличных");
     const idempotency = z.uuid().parse(req.headers["idempotency-key"]);
+    const expectedTotal = z
+      .number()
+      .int()
+      .nonnegative()
+      .optional()
+      .parse(req.body.expected_total);
     const id = await store.transaction(async () => {
       const previous = await store.get(
         "SELECT id,request_hash FROM orders WHERE buyer_session=? AND idempotency=?",
         "staff:" + req.staff.id,
         idempotency,
       );
-      const requestHash = hash(JSON.stringify({ ...input, method }));
+      const requestHash = hash(
+        JSON.stringify({
+          ...input,
+          method,
+          ...(expectedTotal === undefined
+            ? {}
+            : { expected_total: expectedTotal }),
+        }),
+      );
       if (previous) {
         if (previous.request_hash !== requestHash)
           throw new AppError(409, "Запрос уже использован");
@@ -783,13 +863,34 @@ export async function createApp({
       if (!e) throw new AppError(404, "Мероприятие не найдено");
       if (e.available < input.quantity)
         throw new AppError(409, "Недостаточно мест");
+      const price =
+        method === "invite"
+          ? {
+              total: 0,
+              lines: [{ quantity: input.quantity, unit_price: 0, total: 0 }],
+            }
+          : await store.quote(e.id, input.quantity);
+      if (
+        method === "cash" &&
+        ((e.price_tiers && expectedTotal === undefined) ||
+          (expectedTotal !== undefined && expectedTotal !== price.total))
+      )
+        throw new AppError(
+          409,
+          "Стоимость изменилась. Проверьте обновлённую сумму.",
+          "PRICE_CHANGED",
+        );
       const id = randomUUID();
       const values = {
         id,
         access_token: token(),
         ...input,
-        unit_price: method === "invite" ? 0 : e.price,
-        total: method === "invite" ? 0 : e.price * input.quantity,
+        unit_price: price.lines[0].unit_price,
+        total: price.total,
+        price_breakdown:
+          method !== "invite" && e.price_tiers
+            ? JSON.stringify(price.lines)
+            : null,
         status: "pending",
         method,
         mode: demo ? "demo" : "live",
@@ -978,6 +1079,7 @@ export async function createApp({
     const status = err instanceof z.ZodError ? 400 : err.status || 500;
     if (status >= 500) console.error("Request failed", err.code || err.name);
     res.status(status).json({
+      ...(err instanceof AppError && err.code ? { code: err.code } : {}),
       error:
         err instanceof z.ZodError
           ? "Проверьте заполнение полей"

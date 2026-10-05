@@ -1,3 +1,22 @@
+export type PriceTier = { up_to: number | null; price: number };
+export type PriceLine = {
+  tier?: number;
+  quantity: number;
+  unit_price: number;
+  total: number;
+};
+export type PriceQuote = {
+  quantity: number;
+  lines: PriceLine[];
+  total: number;
+};
+export class ApiError extends Error {
+  code?: string;
+  constructor(message: string, code?: string) {
+    super(message);
+    this.code = code;
+  }
+}
 export type EventData = {
   id: string;
   title: string;
@@ -7,6 +26,8 @@ export type EventData = {
   venue: string;
   address: string;
   price: number;
+  base_price?: number;
+  price_tiers?: PriceTier[] | null;
   capacity: number;
   available: number;
   description: string;
@@ -36,6 +57,7 @@ export type OrderData = {
   last_name: string;
   quantity: number;
   unit_price: number;
+  price_breakdown: PriceLine[];
   total: number;
   status: string;
   voided_at: string | null;
@@ -80,6 +102,6 @@ export async function api<T>(url: string, init: RequestInit = {}): Promise<T> {
     headers: { "Content-Type": "application/json", ...init.headers },
   });
   const data = await r.json();
-  if (!r.ok) throw new Error(data.error || "Ошибка соединения");
+  if (!r.ok) throw new ApiError(data.error || "Ошибка соединения", data.code);
   return data;
 }

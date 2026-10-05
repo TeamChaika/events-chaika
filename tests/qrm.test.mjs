@@ -155,6 +155,48 @@ test("QRM creation preflights terminal, uses kopecks and correlates callback", a
   assert.ok(body.payment_purpose.length <= 140);
   assert.equal(body.nomenclature[0].price, 500000);
   assert.ok(body.notification_url.includes(order.id));
+  calls.length = 0;
+  const lines = [
+    { tier: 0, quantity: 2, unit_price: 500000, total: 1000000 },
+    { tier: 1, quantity: 1, unit_price: 800000, total: 800000 },
+  ];
+  await createPayment(
+    {
+      ...order,
+      quantity: 3,
+      total: 1800000,
+      price_breakdown: JSON.stringify(lines),
+    },
+    { title: "Тестовое событие" },
+    "https://events.example.com",
+  );
+  const mixed = JSON.parse(calls[1].init.body);
+  assert.equal(mixed.sum, 1800000);
+  assert.deepEqual(
+    mixed.nomenclature.map((l) => [l.count, l.price, l.amount]),
+    [
+      [2, 500000, 1000000],
+      [1, 800000, 800000],
+    ],
+  );
+  calls.length = 0;
+  await assert.rejects(
+    createPayment(
+      {
+        ...order,
+        quantity: 3,
+        total: 1,
+        price_breakdown: JSON.stringify(lines),
+      },
+      { title: "Тест" },
+      "https://events.example.com",
+    ),
+  );
+  assert.equal(
+    calls.length,
+    0,
+    "invalid saved totals must not reach the provider",
+  );
 });
 test("live creation follows the terminal's receipt and nomenclature settings", async (t) => {
   const previous = { ...process.env },
