@@ -33,20 +33,6 @@
   gap: 12px;
   margin: 8px 0;
 }
-.lp-pricing {
-  padding-top: 48px;
-  padding-bottom: 24px;
-}
-.lp-pricing h2 {
-  margin: 0;
-  font-size: 26px;
-  font-weight: 500;
-}
-.lp-pricing > p {
-  font-size: 13px;
-  color: #a89b95;
-  line-height: 1.7;
-}
 @media (max-width: 600px) {
   .price-schedule {
     grid-template-columns: 1fr;

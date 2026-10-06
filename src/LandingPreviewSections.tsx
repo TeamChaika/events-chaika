@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import { dateLabel, money, type EventData } from "./types";
 import "./landing-preview.css";
-import { PriceSchedule } from "./Pricing";
 
 const asset = (name: string) => `/assets/landing-preview/${name}.webp`;
 type Artist = { name: string; image: string; poster?: string; time: string };
@@ -172,19 +171,6 @@ export default function LandingPreviewSections({
           </a>
         ))}
       </nav>
-      {event.price_tiers && (
-        <section
-          className="lp-pricing lp-wrap"
-          aria-labelledby="lp-pricing-title"
-        >
-          <h2 id="lp-pricing-title">Билеты</h2>
-          <PriceSchedule tiers={event.price_tiers} />
-          <p>
-            Цена растёт по мере продажи билетов. Итоговая стоимость вашего
-            заказа — в форме покупки.
-          </p>
-        </section>
-      )}
 
       <section
         id="about"
