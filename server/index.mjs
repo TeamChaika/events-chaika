@@ -14,7 +14,11 @@ import {
   readStatus,
   checkMerchant,
 } from "./qrm.mjs";
-import { priceTiersSchema, orderPriceLines } from "./pricing.mjs";
+import {
+  priceTiersSchema,
+  orderPriceLines,
+  pricingUpdateSchema,
+} from "./pricing.mjs";
 import { channelReady, processOutbox } from "./delivery.mjs";
 import { checkSmsAero } from "./smsaero.mjs";
 import { telegram } from "./telegram.mjs";
@@ -762,6 +766,13 @@ export async function createApp({
       res.status(201).json({ url: "/media/" + filename });
     },
   );
+  app.get("/api/admin/events/:id/pricing", staff, admin, async (req, res) => {
+    res.json(await store.pricingOverview(req.params.id));
+  });
+  app.put("/api/admin/events/:id/pricing", staff, admin, async (req, res) => {
+    const input = pricingUpdateSchema.parse(req.body);
+    res.json(await store.updatePricing(req.params.id, input, req.staff.role));
+  });
   app.post("/api/admin/events", staff, admin, async (req, res) => {
     const data = eventSchema.parse(req.body);
     const id = randomUUID();
@@ -786,6 +797,17 @@ export async function createApp({
     const updated = await store.transaction(async () => {
       const e = await store.event(req.params.id);
       if (!e) throw new AppError(404, "Мероприятие не найдено");
+      if (
+        e.price_tiers &&
+        (data.capacity !== e.capacity ||
+          data.price !== e.base_price ||
+          (data.price_tiers !== undefined &&
+            JSON.stringify(data.price_tiers) !== JSON.stringify(e.price_tiers)))
+      )
+        throw new AppError(
+          409,
+          "Меняйте количество и стоимость в разделе «Билеты и цены». Если настройки уже изменены, откройте событие заново.",
+        );
       if (data.capacity < (await store.reserved(e.id)))
         throw new AppError(
           409,

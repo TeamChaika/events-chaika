@@ -26,6 +26,7 @@ import { PriceSchedule, PriceBreakdown, usePriceQuote } from "./Pricing";
 import { GuestSearch } from "./GuestSearch";
 import { AcceptanceHistory } from "./Legal";
 import { OrderManagement } from "./OrderManagement";
+import { AdminPricing } from "./AdminPricing";
 import {
   api,
   ApiError,
@@ -90,6 +91,7 @@ export function Admin() {
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [edit, setEdit] = useState<EventData | "new" | null>(null),
+    [pricing, setPricing] = useState<EventData | null>(null),
     [issue, setIssue] = useState(false),
     [acceptanceOrder, setAcceptanceOrder] = useState<AdminOrder | null>(null),
     [managedOrder, setManagedOrder] = useState<AdminOrder | null>(null),
@@ -378,6 +380,13 @@ export function Admin() {
                             />
                           </div>
                           <div className="event-card-actions">
+                            <button
+                              className="button secondary"
+                              onClick={() => setPricing(event)}
+                            >
+                              <CircleDollarSign size={15} />
+                              Билеты и цены
+                            </button>
                             <button
                               className="button secondary"
                               onClick={() => setEdit(event)}
@@ -859,6 +868,17 @@ export function Admin() {
           }}
         />
       )}
+      {pricing && (
+        <AdminPricing
+          eventId={pricing.id}
+          title={pricing.title}
+          close={() => setPricing(null)}
+          saved={() => {
+            setPricing(null);
+            void load();
+          }}
+        />
+      )}
       {edit && (
         <EventEditor
           event={edit}
@@ -1100,6 +1120,7 @@ function EventEditor({
               min="1"
               max="100000"
               defaultValue={e?.capacity || 200}
+              readOnly={Boolean(e?.price_tiers)}
               required
             />
           </label>
@@ -1151,7 +1172,7 @@ function EventEditor({
         </div>
         <p className="muted small-text">
           {e?.price_tiers
-            ? "Цена рассчитывается автоматически по ступеням. Уже оформленные заказы сохраняют стоимость."
+            ? "Количество билетов и цены меняются кнопкой «Билеты и цены» в карточке мероприятия. Уже оформленные заказы сохраняют стоимость."
             : "Изменение цены применяется только к новым заказам."}
         </p>
         {e?.price_tiers && <PriceSchedule tiers={e.price_tiers} />}

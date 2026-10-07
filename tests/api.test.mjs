@@ -2226,3 +2226,296 @@ test(
     }
   },
 );
+
+test("admin pricing edits quotas and prices while keeping existing amounts and reservations", async (t) => {
+  const h = await harness(t);
+  const legacy = await tieredEvent(h, 47);
+  const key = randomUUID();
+  const input = { ...guest, quantity: 3, expected_total: 1500000 };
+  const held = await h.order(input, key);
+  await h.login();
+  const before = (await h.request("/admin/events/red-moon/pricing")).body;
+  assert.deepEqual(
+    before.tiers.map((r) => [r.quantity, r.paid, r.reserved]),
+    [
+      [50, 47, 3],
+      [100, 0, 0],
+      [150, 0, 0],
+    ],
+  );
+  const tooSmall = await h.request("/admin/events/red-moon/pricing", {
+    method: "PUT",
+    body: {
+      revision: before.revision,
+      tiers: [
+        { quantity: 49, price: 600000 },
+        { quantity: 100, price: 800000 },
+        { quantity: 150, price: 1000000 },
+      ],
+    },
+  });
+  assert.equal(tooSmall.status, 409);
+  assert.equal(
+    (await h.store.get("SELECT price_breakdown FROM orders WHERE id=?", legacy))
+      .price_breakdown,
+    null,
+  );
+  const edited = await h.request("/admin/events/red-moon/pricing", {
+    method: "PUT",
+    body: {
+      revision: before.revision,
+      tiers: [
+        { quantity: 60, price: 600000 },
+        { quantity: 90, price: 900000 },
+        { quantity: 160, price: 1200000 },
+      ],
+    },
+  });
+  assert.equal(edited.status, 200);
+  assert.equal(edited.body.capacity, 310);
+  assert.notEqual(edited.body.revision, before.revision);
+  assert.equal(
+    (await h.request("/events/red-moon/quote?quantity=1")).body.total,
+    600000,
+  );
+  const retry = await h.order(input, key);
+  assert.equal(retry.status, 200);
+  assert.equal(retry.body.total, 1500000);
+  await h.store.markPaid(held.body.id);
+  assert.equal(
+    (await h.store.get("SELECT total FROM orders WHERE id=?", held.body.id))
+      .total,
+    1500000,
+  );
+  assert.equal(
+    (
+      await h.store.get(
+        "SELECT COUNT(*) n FROM tickets WHERE order_id=?",
+        held.body.id,
+      )
+    ).n,
+    3,
+  );
+  const frozen = await h.store.get("SELECT * FROM orders WHERE id=?", legacy);
+  assert.equal(frozen.total, 23500000);
+  assert.equal(frozen.unit_price, 500000);
+  assert.deepEqual(JSON.parse(frozen.price_breakdown), [
+    { tier: 0, quantity: 47, unit_price: 500000, total: 23500000 },
+  ]);
+  const stale = await h.request("/admin/events/red-moon/pricing", {
+    method: "PUT",
+    body: { revision: before.revision, tiers: before.tiers },
+  });
+  assert.equal(stale.status, 409);
+  assert.equal(stale.body.code, "PRICING_STALE");
+  const staleOrder = await h.order({
+    ...guest,
+    quantity: 1,
+    expected_total: 500000,
+  });
+  assert.equal(staleOrder.status, 409);
+  assert.equal(staleOrder.body.code, "PRICE_CHANGED");
+  assert.equal(
+    (await h.order({ ...guest, quantity: 1, expected_total: 600000 })).body
+      .total,
+    600000,
+  );
+  assert.equal(
+    (
+      await h.store.all(
+        "SELECT * FROM audit WHERE action LIKE '%pricing_update%'",
+      )
+    ).length,
+    1,
+  );
+});
+
+test("changing quota boundaries preserves legacy allocations including their actual old price", async (t) => {
+  const h = await harness(t);
+  const legacy = await tieredEvent(h, 70);
+  await h.login();
+  const before = (await h.request("/admin/events/red-moon/pricing")).body;
+  const edited = await h.request("/admin/events/red-moon/pricing", {
+    method: "PUT",
+    body: {
+      revision: before.revision,
+      tiers: [
+        { quantity: 100, price: 600000 },
+        { quantity: 100, price: 800000 },
+        { quantity: 100, price: 1000000 },
+      ],
+    },
+  });
+  assert.equal(edited.status, 200);
+  assert.deepEqual(
+    edited.body.tiers.map((row) => row.paid),
+    [50, 20, 0],
+  );
+  const historical = await h.store.get(
+    "SELECT * FROM orders WHERE id=?",
+    legacy,
+  );
+  assert.equal(historical.total, 35000000);
+  assert.deepEqual(
+    JSON.parse(historical.price_breakdown).map((line) => [
+      line.tier,
+      line.quantity,
+      line.unit_price,
+    ]),
+    [
+      [0, 50, 500000],
+      [1, 20, 500000],
+    ],
+  );
+  const decreaseUsedSecond = await h.request("/admin/events/red-moon/pricing", {
+    method: "PUT",
+    body: {
+      revision: edited.body.revision,
+      tiers: [
+        { quantity: 200, price: 600000 },
+        { quantity: 19, price: 800000 },
+        { quantity: 100, price: 1000000 },
+      ],
+    },
+  });
+  assert.equal(decreaseUsedSecond.status, 409);
+  assert.equal(
+    (await h.request("/admin/events/red-moon/pricing")).body.capacity,
+    300,
+  );
+});
+
+test("pricing editor enforces access, quantity, money and capacity rules including invites", async (t) => {
+  const h = await harness(t);
+  await tieredEvent(h);
+  assert.equal((await h.request("/admin/events/red-moon/pricing")).status, 401);
+  await h.login("door");
+  assert.equal((await h.request("/admin/events/red-moon/pricing")).status, 403);
+  assert.equal(
+    (
+      await h.request("/admin/events/red-moon/pricing", {
+        method: "PUT",
+        body: {},
+      })
+    ).status,
+    403,
+  );
+  await h.login();
+  const before = (await h.request("/admin/events/red-moon/pricing")).body;
+  for (const first of [
+    { quantity: 0, price: 500000 },
+    { quantity: 1.5, price: 500000 },
+    { quantity: 50, price: 0 },
+    { quantity: 50, price: 800000 },
+    { quantity: 100000, price: 500000 },
+  ]) {
+    assert.equal(
+      (
+        await h.request("/admin/events/red-moon/pricing", {
+          method: "PUT",
+          body: {
+            revision: before.revision,
+            tiers: [first, ...before.tiers.slice(1)],
+          },
+        })
+      ).status,
+      400,
+    );
+  }
+  assert.equal(
+    (
+      await h.request("/admin/events/red-moon/pricing", {
+        method: "PUT",
+        body: { revision: before.revision, tiers: before.tiers.slice(0, 2) },
+      })
+    ).status,
+    400,
+  );
+  await h.request("/admin/issue", {
+    method: "POST",
+    key: randomUUID(),
+    body: { ...guest, quantity: 10, method: "invite" },
+  });
+  const snapshot = (await h.request("/admin/events/red-moon/pricing")).body;
+  assert.equal(snapshot.occupied, 10);
+  assert.equal(snapshot.tiers[0].paid, 0);
+  const reduced = await h.request("/admin/events/red-moon/pricing", {
+    method: "PUT",
+    body: {
+      revision: snapshot.revision,
+      tiers: snapshot.tiers.map((tier) => ({ ...tier, quantity: 1 })),
+    },
+  });
+  assert.equal(reduced.status, 409);
+  assert.equal(reduced.body.code, "PRICING_CAPACITY");
+  assert.equal((await h.request("/admin/events/missing/pricing")).status, 404);
+});
+
+test("simultaneous quota decrease and reservation never oversell a price tier", async (t) => {
+  const h = await harness(t);
+  await tieredEvent(h, 49);
+  await h.login();
+  const before = (await h.request("/admin/events/red-moon/pricing")).body;
+  const [edit, order] = await Promise.all([
+    h.request("/admin/events/red-moon/pricing", {
+      method: "PUT",
+      body: {
+        revision: before.revision,
+        tiers: [{ quantity: 49, price: 500000 }, ...before.tiers.slice(1)],
+      },
+    }),
+    h.order({ ...guest, quantity: 1, expected_total: 500000 }),
+  ]);
+  assert.ok(
+    (edit.status === 200 && order.status === 409) ||
+      (edit.status === 409 && order.status === 201),
+  );
+  const after = (await h.request("/admin/events/red-moon/pricing")).body;
+  assert.ok(
+    after.tiers.every((tier) => tier.paid + tier.reserved <= tier.quantity),
+  );
+});
+
+test("late payment after a price edit keeps its amount but respects the final tier quota", async (t) => {
+  const h = await harness(t);
+  await tieredEvent(h, 150);
+  const expired = await h.order({
+    ...guest,
+    quantity: 2,
+    expected_total: 2000000,
+  });
+  await h.store.run(
+    "UPDATE orders SET status='expired' WHERE id=?",
+    expired.body.id,
+  );
+  await h.login();
+  const before = (await h.request("/admin/events/red-moon/pricing")).body;
+  const changed = await h.request("/admin/events/red-moon/pricing", {
+    method: "PUT",
+    body: {
+      revision: before.revision,
+      tiers: [
+        { quantity: 100, price: 500000 },
+        { quantity: 100, price: 800000 },
+        { quantity: 1, price: 1100000 },
+      ],
+    },
+  });
+  assert.equal(changed.status, 200);
+  await h.store.markPaid(expired.body.id);
+  const reviewed = await h.store.get(
+    "SELECT * FROM orders WHERE id=?",
+    expired.body.id,
+  );
+  assert.equal(reviewed.status, "paid_review");
+  assert.equal(reviewed.total, 2000000);
+  assert.equal(
+    (
+      await h.store.get(
+        "SELECT COUNT(*) n FROM tickets WHERE order_id=?",
+        expired.body.id,
+      )
+    ).n,
+    0,
+  );
+});

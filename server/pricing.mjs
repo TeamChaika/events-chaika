@@ -1,4 +1,52 @@
 import { z } from "zod";
+import { createHash } from "node:crypto";
+
+export const pricingUpdateSchema = z.object({
+  revision: z.string().regex(/^[a-f0-9]{64}$/),
+  tiers: z
+    .array(
+      z.object({
+        quantity: z.number().int().min(1).max(100000),
+        price: z.number().int().min(100).max(100000000),
+      }),
+    )
+    .min(1)
+    .max(10)
+    .refine(
+      (tiers) => tiers.reduce((n, tier) => n + tier.quantity, 0) <= 100000,
+      "Общее количество билетов не должно превышать 100 000",
+    ),
+});
+
+export const pricingRevision = (event) =>
+  createHash("sha256")
+    .update(
+      JSON.stringify([
+        event.price,
+        event.capacity,
+        readTiers(event.price_tiers),
+      ]),
+    )
+    .digest("hex");
+
+// Assign legacy orders to their existing quotas before editing the policy.
+// Stored amounts remain authoritative, even if they differ from today's prices.
+export function pricingAllocations(tiers, orders) {
+  const legacyUsed = tiers.map(() => 0);
+  return orders.map((order) => {
+    if (order.price_breakdown) return { order, lines: orderPriceLines(order) };
+    const lines = allocate(tiers, legacyUsed, order.quantity).map((line) => {
+      legacyUsed[line.tier] += line.quantity;
+      return {
+        ...line,
+        unit_price: order.unit_price,
+        total: line.quantity * order.unit_price,
+      };
+    });
+    orderPriceLines({ ...order, price_breakdown: JSON.stringify(lines) });
+    return { order, lines };
+  });
+}
 
 export const priceTiersSchema = z
   .array(

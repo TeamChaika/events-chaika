@@ -1,4 +1,12 @@
-import { allocate, readTiers, tierUsage, orderPriceLines } from "./pricing.mjs";
+import {
+  allocate,
+  readTiers,
+  tierUsage,
+  orderPriceLines,
+  pricingRevision,
+  pricingAllocations,
+  priceTiersSchema,
+} from "./pricing.mjs";
 import { openDatabase } from "./database.mjs";
 import { randomBytes, randomUUID } from "node:crypto";
 
@@ -212,7 +220,7 @@ export async function openStore(
     ).count;
   const pricingOrders = (id, excludeId = "") =>
     all(
-      "SELECT quantity,price_breakdown FROM orders WHERE event_id=? AND id!=? AND mode=? AND is_test=0 AND voided_at IS NULL AND method!='invite' AND status IN ('creating','pending','unknown','paid')",
+      "SELECT id,quantity,unit_price,total,status,price_breakdown FROM orders WHERE event_id=? AND id!=? AND mode=? AND is_test=0 AND voided_at IS NULL AND method!='invite' AND status IN ('creating','pending','unknown','paid') ORDER BY created_at,id",
       id,
       excludeId,
       pricingMode,
@@ -242,6 +250,125 @@ export async function openStore(
       available: Math.max(0, e.capacity - (await reserved(id))),
     };
   };
+  const pricingOverview = async (id) =>
+    transaction(async () => {
+      const e = await get("SELECT * FROM events WHERE id=?", id);
+      if (!e) throw new AppError(404, "Мероприятие не найдено");
+      const tiers = readTiers(e.price_tiers) || [
+        { up_to: null, price: e.price },
+      ];
+      const allocations = pricingAllocations(tiers, await pricingOrders(id));
+      return {
+        revision: pricingRevision(e),
+        capacity: e.capacity,
+        occupied: Number(await reserved(id)),
+        tiers: tiers.map((tier, index) => {
+          let paid = 0,
+            held = 0;
+          for (const { order, lines } of allocations) {
+            for (const line of lines)
+              if (line.tier === index) {
+                if (order.status === "paid") paid += line.quantity;
+                else held += line.quantity;
+              }
+          }
+          return {
+            quantity:
+              (tier.up_to ?? e.capacity) - (tiers[index - 1]?.up_to || 0),
+            price: tier.price,
+            paid,
+            reserved: held,
+          };
+        }),
+      };
+    });
+  const updatePricing = async (id, input, actor) =>
+    transaction(async () => {
+      const before = await pricingOverview(id);
+      if (input.revision !== before.revision)
+        throw new AppError(
+          409,
+          "Настройки уже изменены. Обновите данные и внесите правки заново.",
+          "PRICING_STALE",
+        );
+      if (input.tiers.length !== before.tiers.length)
+        throw new AppError(
+          400,
+          "Редактируйте количество и цену существующих ступеней.",
+        );
+      const capacity = input.tiers.reduce((n, tier) => n + tier.quantity, 0);
+      if (capacity < before.occupied)
+        throw new AppError(
+          409,
+          `Всего занято ${before.occupied} мест, включая пригласительные. Увеличьте количество билетов.`,
+          "PRICING_CAPACITY",
+        );
+      input.tiers.forEach((tier, index) => {
+        const occupied =
+          before.tiers[index].paid + before.tiers[index].reserved;
+        if (tier.quantity < occupied)
+          throw new AppError(
+            409,
+            `В ступени ${index + 1} уже продано и зарезервировано ${occupied} билетов. Количество не может быть меньше.`,
+            "PRICING_CAPACITY",
+          );
+      });
+      let upper = 0;
+      const tiers =
+        input.tiers.length === 1
+          ? null
+          : priceTiersSchema.parse(
+              input.tiers.map((tier, index) => {
+                upper += tier.quantity;
+                return {
+                  up_to: index === input.tiers.length - 1 ? null : upper,
+                  price: tier.price,
+                };
+              }),
+            );
+      const e = await get("SELECT * FROM events WHERE id=?", id);
+      if (
+        JSON.stringify(input.tiers) ===
+        JSON.stringify(
+          before.tiers.map(({ quantity, price }) => ({ quantity, price })),
+        )
+      )
+        return before;
+      const oldTiers = readTiers(e.price_tiers);
+      if (oldTiers) {
+        for (const { order, lines } of pricingAllocations(
+          oldTiers,
+          await pricingOrders(id),
+        )) {
+          if (!order.price_breakdown)
+            await run(
+              "UPDATE orders SET price_breakdown=? WHERE id=?",
+              JSON.stringify(lines),
+              order.id,
+            );
+        }
+      }
+      await run(
+        "UPDATE events SET price=?,capacity=?,price_tiers=? WHERE id=?",
+        input.tiers[0].price,
+        capacity,
+        tiers ? JSON.stringify(tiers) : null,
+        id,
+      );
+      await audit(
+        JSON.stringify({
+          action: "pricing_update",
+          before: before.tiers.map(({ quantity, price }) => ({
+            quantity,
+            price,
+          })),
+          after: input.tiers,
+        }),
+        id,
+        actor,
+      );
+      return pricingOverview(id);
+    });
   const enqueue = async (id, kind) => {
     for (const ch of ["created", "review"].includes(kind)
       ? ["telegram"]
@@ -301,19 +428,20 @@ export async function openStore(
         o.mode === pricingMode &&
         o.method !== "invite"
       ) {
-        const tiers = readTiers(
-          (await get("SELECT price_tiers FROM events WHERE id=?", o.event_id))
-            .price_tiers,
+        const priceEvent = await get(
+          "SELECT price_tiers,capacity FROM events WHERE id=?",
+          o.event_id,
         );
+        const tiers = readTiers(priceEvent.price_tiers);
         if (tiers) {
           const used = tierUsage(tiers, await pricingOrders(o.event_id, o.id));
           const lines = o.price_breakdown
             ? orderPriceLines(o)
             : allocate(tiers, used, o.quantity);
           const unavailable = lines.some((line) => {
-            const upper = tiers[line.tier].up_to;
+            const upper = tiers[line.tier]?.up_to ?? priceEvent.capacity;
             return (
-              upper !== null &&
+              !tiers[line.tier] ||
               used[line.tier] + line.quantity >
                 upper - (tiers[line.tier - 1]?.up_to || 0)
             );
@@ -600,6 +728,8 @@ export async function openStore(
     event,
     reserved,
     quote,
+    pricingOverview,
+    updatePricing,
     enqueue,
     markPaid,
     checkin,
