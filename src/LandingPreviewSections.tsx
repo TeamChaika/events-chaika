@@ -21,7 +21,7 @@ const stages = [
       {
         name: "LEO N",
         image: "leo-n",
-        poster: "poster-leo-n",
+        poster: "poster-leo-n-20261007",
         time: "21:40 — 23:00",
       },
       {
