@@ -301,3 +301,61 @@ test("demo orders and missing settings cannot send real SMS", async (t) => {
   delete process.env.SMSAERO_API_KEY;
   assert.equal(channelReady("sms"), false);
 });
+
+test("HTTP 402 stays retryable beyond the ordinary attempt limit and resumes after funding", async (t) => {
+  const h = await outbox(t);
+  let calls = 0;
+  global.fetch = async () => {
+    calls++;
+    return new Response("Not enough money", { status: 402 });
+  };
+  const started = Date.now();
+  for (let i = 0; i < 4; i++) {
+    await h.store.run("UPDATE outbox SET next_at=0 WHERE id=?", h.id);
+    await processOutbox(h.store, "https://events.example.com", false);
+    const job = await h.job();
+    assert.equal(job.status, "retry");
+    assert.equal(job.attempts, i + 1);
+    assert.equal(job.provider_id, null);
+    assert.ok(Number(job.next_at) >= started + 300000);
+    assert.match(job.error, /недостаточно средств/);
+  }
+  await processOutbox(h.store, "https://events.example.com", false);
+  assert.equal(calls, 4, "do not retry before five minutes");
+  global.fetch = async () => {
+    calls++;
+    return response(0);
+  };
+  await h.store.run("UPDATE outbox SET next_at=0 WHERE id=?", h.id);
+  await processOutbox(h.store, "https://events.example.com", false);
+  assert.equal((await h.job()).status, "submitted");
+  assert.equal((await h.job()).error, null);
+  global.fetch = async (url) => {
+    assert.ok(url.endsWith("/sms/status"));
+    return response(1);
+  };
+  await h.store.run("UPDATE outbox SET next_at=0 WHERE id=?", h.id);
+  await processOutbox(h.store, "https://events.example.com", false);
+  assert.equal((await h.job()).status, "delivered");
+  assert.equal(
+    calls,
+    5,
+    "accepted message is only reconciled, never sent twice",
+  );
+});
+
+test("an old unknown send is never automatically treated as insufficient funds", async (t) => {
+  const h = await outbox(t);
+  await h.store.run(
+    "UPDATE outbox SET status='unknown',next_at=0 WHERE id=?",
+    h.id,
+  );
+  global.fetch = async () => {
+    throw new Error(
+      "Must not contact SMS Aero for an uncertain historical send",
+    );
+  };
+  await processOutbox(h.store, "https://events.example.com", false);
+  assert.equal((await h.job()).status, "unknown");
+  assert.equal((await h.job()).attempts, 0);
+});

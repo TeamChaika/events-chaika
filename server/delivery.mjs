@@ -198,6 +198,8 @@ export async function processOutbox(store, origin, demo) {
         job.id,
       );
     } catch (error) {
+      const awaitingBalance =
+        job.channel === "sms" && error.message === "sms_balance";
       // An uncertain transport response might already have sent a message. Manual review avoids duplicate SMS.
       const definite = [
         "sms_rejected",
@@ -206,14 +208,17 @@ export async function processOutbox(store, origin, demo) {
       ].includes(error.message);
       await store.run(
         "UPDATE outbox SET status=?,next_at=?,error=? WHERE id=?",
-        (job.channel === "telegram" && job.provider_id && job.attempts < 8) ||
+        awaitingBalance ||
+          (job.channel === "telegram" && job.provider_id && job.attempts < 8) ||
           (definite && job.attempts < 2)
           ? "retry"
           : "unknown",
-        Date.now() + 60000,
-        definite
-          ? "Сервис отклонил отправку"
-          : "Результат отправки неизвестен: проверьте сервис перед повтором",
+        Date.now() + (awaitingBalance ? 300000 : 60000),
+        awaitingBalance
+          ? "SMS Aero: недостаточно средств. Автоматический повтор через 5 минут"
+          : definite
+            ? "Сервис отклонил отправку"
+            : "Результат отправки неизвестен: проверьте сервис перед повтором",
         job.id,
       );
     }

@@ -3,7 +3,13 @@ import { z } from "zod";
 const API = "https://gate.smsaero.ru/v2";
 export class SmsAeroError extends Error {
   constructor(outcome) {
-    super(outcome === "rejected" ? "sms_rejected" : "sms_unknown");
+    super(
+      outcome === "balance"
+        ? "sms_balance"
+        : outcome === "rejected"
+          ? "sms_rejected"
+          : "sms_unknown",
+    );
     this.outcome = outcome;
   }
 }
@@ -35,6 +41,8 @@ async function request(path, parameters = {}) {
     // No automatic failover: an uncertain POST may already have sent the SMS.
     if (!response.ok) {
       await response.body?.cancel();
+      // SMS Aero documents HTTP 402 as a definite refusal: no message was accepted.
+      if (response.status === 402) throw new SmsAeroError("balance");
       throw new SmsAeroError(
         [400, 401, 403, 422].includes(response.status) ? "rejected" : "unknown",
       );
