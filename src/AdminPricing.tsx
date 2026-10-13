@@ -3,12 +3,25 @@ import { Check, RefreshCw } from "lucide-react";
 import { api, ApiError, money } from "./types";
 import { ErrorNotice, Modal, Spinner } from "./ui";
 import "./pricing.css";
+import {
+  AdminPriceRules,
+  moscowInput,
+  type ScheduleDraft,
+  type PromoDraft,
+} from "./AdminPriceRules";
 
 type PricingSettings = {
   revision: string;
   capacity: number;
   occupied: number;
   tiers: { quantity: number; price: number; paid: number; reserved: number }[];
+  schedule: { starts_at: string; price: number }[];
+  promos: {
+    code: string;
+    kind: "fixed" | "percent";
+    value: number;
+    active: boolean;
+  }[];
 };
 type DraftTier = { quantity: string; price: string };
 
@@ -25,6 +38,8 @@ export function AdminPricing({
 }) {
   const [settings, setSettings] = useState<PricingSettings>();
   const [draft, setDraft] = useState<DraftTier[]>([]);
+  const [schedule, setSchedule] = useState<ScheduleDraft[]>([]);
+  const [promos, setPromos] = useState<PromoDraft[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [mustReload, setMustReload] = useState(false);
@@ -40,6 +55,18 @@ export function AdminPricing({
     )
       .then((result) => {
         setSettings(result);
+        setSchedule(
+          result.schedule.map((row) => ({
+            starts_at: moscowInput(row.starts_at),
+            price: String(row.price / 100),
+          })),
+        );
+        setPromos(
+          result.promos.map((row) => ({
+            ...row,
+            value: String(row.value / 100),
+          })),
+        );
         setDraft(
           result.tiers.map((tier) => ({
             quantity: String(tier.quantity),
@@ -62,11 +89,25 @@ export function AdminPricing({
   );
   const changed =
     settings &&
-    draft.some(
+    (draft.some(
       (tier, index) =>
         Number(tier.quantity) !== settings.tiers[index].quantity ||
         Math.round(Number(tier.price) * 100) !== settings.tiers[index].price,
-    );
+    ) ||
+      JSON.stringify(schedule) !==
+        JSON.stringify(
+          settings.schedule.map((row) => ({
+            starts_at: moscowInput(row.starts_at),
+            price: String(row.price / 100),
+          })),
+        ) ||
+      JSON.stringify(promos) !==
+        JSON.stringify(
+          settings.promos.map((row) => ({
+            ...row,
+            value: String(row.value / 100),
+          })),
+        ));
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!settings || busy || loading || mustReload) return;
@@ -93,7 +134,19 @@ export function AdminPricing({
     try {
       await api(`/admin/events/${encodeURIComponent(eventId)}/pricing`, {
         method: "PUT",
-        body: JSON.stringify({ revision: settings.revision, tiers }),
+        body: JSON.stringify({
+          revision: settings.revision,
+          tiers,
+          schedule: schedule.map((row) => ({
+            starts_at: new Date(`${row.starts_at}:00+03:00`).toISOString(),
+            price: Math.round(Number(row.price) * 100),
+          })),
+          promos: promos.map((row) => ({
+            ...row,
+            code: row.code.trim().toUpperCase(),
+            value: Math.round(Number(row.value) * 100),
+          })),
+        }),
       });
       saved();
     } catch (e) {
@@ -206,6 +259,17 @@ export function AdminPricing({
               зале, но не расходуют ценовые квоты. Тестовые заказы в квоты не
               входят.
             </p>
+            <fieldset
+              disabled={busy || mustReload}
+              className="admin-pricing-fields"
+            >
+              <AdminPriceRules
+                schedule={schedule}
+                setSchedule={setSchedule}
+                promos={promos}
+                setPromos={setPromos}
+              />
+            </fieldset>
             <ErrorNotice text={error} />
             {mustReload && (
               <button

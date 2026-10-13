@@ -420,7 +420,13 @@ function Checkout({
     [loading, setLoading] = useState(false),
     [error, setError] = useState("");
   const key = useRef(crypto.randomUUID());
-  const { quote, quoteError, refreshQuote } = usePriceQuote(event.id, quantity);
+  const [promoInput, setPromoInput] = useState("");
+  const [promoCode, setPromoCode] = useState("");
+  const { quote, quoteError, refreshQuote } = usePriceQuote(
+    event.id,
+    quantity,
+    promoCode,
+  );
   const [legal, setLegal] = useState<LegalCatalog>();
   const [legalError, setLegalError] = useState("");
   const [accepted, setAccepted] = useState({
@@ -468,6 +474,7 @@ function Checkout({
           event_id: event.id,
           quantity,
           expected_total: quote.total,
+          ...(promoCode ? { promo_code: promoCode } : {}),
           attribution: orderAttribution(event.id),
           acceptances: Object.fromEntries(
             ["terms", "consent", "marketing"].map((slug) => [
@@ -528,6 +535,42 @@ function Checkout({
               <Plus size={17} />
             </button>
           </div>
+        </div>
+        <div className="checkout-promo">
+          <label>
+            Промокод
+            <input
+              value={promoInput}
+              maxLength={32}
+              placeholder="Если у вас есть код"
+              autoCapitalize="characters"
+              autoComplete="off"
+              disabled={loading}
+              onChange={(e) => {
+                setPromoInput(e.target.value);
+                if (promoCode) setPromoCode("");
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  setPromoCode(promoInput.trim().toUpperCase());
+                }
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className="button secondary"
+            disabled={loading || !promoInput.trim()}
+            onClick={() => {
+              if (promoCode) {
+                setPromoCode("");
+                setPromoInput("");
+              } else setPromoCode(promoInput.trim().toUpperCase());
+            }}
+          >
+            {promoCode ? "Убрать" : "Применить"}
+          </button>
         </div>
         <PriceBreakdown quote={quote} />
         <ErrorNotice text={quoteError || ""} />

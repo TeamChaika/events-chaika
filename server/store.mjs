@@ -6,6 +6,10 @@ import {
   pricingRevision,
   pricingAllocations,
   priceTiersSchema,
+  readSchedule,
+  readPromos,
+  scheduledLines,
+  discountedQuote,
 } from "./pricing.mjs";
 import { openDatabase } from "./database.mjs";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -153,6 +157,17 @@ export async function openStore(
         ["provider_status", "INTEGER"],
         ["status_attempts", "INTEGER NOT NULL DEFAULT 0"],
       ];
+      for (const name of ["price_schedule", "promo_codes"]) {
+        if (
+          db.kind === "postgres" ||
+          !(await db.all("PRAGMA table_info(events)")).some(
+            (c) => c.name === name,
+          )
+        )
+          await db.exec(
+            `ALTER TABLE events ADD COLUMN ${db.kind === "postgres" ? "IF NOT EXISTS " : ""}${name} TEXT`,
+          );
+      }
       if (
         db.kind === "postgres" ||
         !(await db.all("PRAGMA table_info(team_members)")).some(
@@ -164,6 +179,7 @@ export async function openStore(
         );
       const orderColumns = [
         ["price_breakdown", "TEXT"],
+        ["discount_snapshot", "TEXT"],
         ["is_test", "INTEGER NOT NULL DEFAULT 0"],
         ["voided_at", "TEXT"],
         ["void_reason", "TEXT"],
@@ -225,28 +241,42 @@ export async function openStore(
       excludeId,
       pricingMode,
     );
-  const quote = async (id, quantity) => {
+  const quote = async (id, quantity, promoCode = "") => {
     const e = await get("SELECT * FROM events WHERE id=?", id);
     if (!e) throw new AppError(404, "Мероприятие не найдено");
     const tiers = readTiers(e.price_tiers);
     const lines = tiers
       ? allocate(tiers, tierUsage(tiers, await pricingOrders(id)), quantity)
       : [{ quantity, unit_price: e.price, total: e.price * quantity }];
-    return {
-      quantity,
-      lines,
-      total: lines.reduce((sum, line) => sum + line.total, 0),
-    };
+    const promo = promoCode
+      ? readPromos(e.promo_codes).find(
+          (row) => row.code === promoCode && row.active,
+        )
+      : null;
+    if (promoCode && !promo)
+      throw new AppError(
+        400,
+        "Промокод не найден или отключён для этого мероприятия",
+        "PROMO_INVALID",
+      );
+    const priced = scheduledLines(lines, readSchedule(e.price_schedule));
+    try {
+      return discountedQuote(quantity, priced, promo);
+    } catch (error) {
+      throw new AppError(400, error.message, "PROMO_INVALID");
+    }
   };
   const event = async (id) => {
     const e = await get("SELECT * FROM events WHERE id=?", id);
     if (!e) return null;
     const tiers = readTiers(e.price_tiers);
+    const { promo_codes: _privatePromos, ...publicEvent } = e;
     return {
-      ...e,
+      ...publicEvent,
       base_price: e.price,
       price_tiers: tiers,
-      price: tiers ? (await quote(id, 1)).total : e.price,
+      has_price_schedule: readSchedule(e.price_schedule).length > 0,
+      price: (await quote(id, 1)).total,
       available: Math.max(0, e.capacity - (await reserved(id))),
     };
   };
@@ -262,6 +292,8 @@ export async function openStore(
         revision: pricingRevision(e),
         capacity: e.capacity,
         occupied: Number(await reserved(id)),
+        schedule: readSchedule(e.price_schedule),
+        promos: readPromos(e.promo_codes),
         tiers: tiers.map((tier, index) => {
           let paid = 0,
             held = 0;
@@ -327,11 +359,15 @@ export async function openStore(
               }),
             );
       const e = await get("SELECT * FROM events WHERE id=?", id);
+      const schedule = input.schedule ?? before.schedule;
+      const promos = input.promos ?? before.promos;
       if (
         JSON.stringify(input.tiers) ===
-        JSON.stringify(
-          before.tiers.map(({ quantity, price }) => ({ quantity, price })),
-        )
+          JSON.stringify(
+            before.tiers.map(({ quantity, price }) => ({ quantity, price })),
+          ) &&
+        JSON.stringify(schedule) === JSON.stringify(before.schedule) &&
+        JSON.stringify(promos) === JSON.stringify(before.promos)
       )
         return before;
       const oldTiers = readTiers(e.price_tiers);
@@ -349,10 +385,12 @@ export async function openStore(
         }
       }
       await run(
-        "UPDATE events SET price=?,capacity=?,price_tiers=? WHERE id=?",
+        "UPDATE events SET price=?,capacity=?,price_tiers=?,price_schedule=?,promo_codes=? WHERE id=?",
         input.tiers[0].price,
         capacity,
         tiers ? JSON.stringify(tiers) : null,
+        JSON.stringify(schedule),
+        JSON.stringify(promos),
         id,
       );
       await audit(
@@ -363,6 +401,10 @@ export async function openStore(
             price,
           })),
           after: input.tiers,
+          schedule_before: before.schedule,
+          schedule_after: schedule,
+          promos_before: before.promos,
+          promos_after: promos,
         }),
         id,
         actor,

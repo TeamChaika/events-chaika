@@ -2519,3 +2519,205 @@ test("late payment after a price edit keeps its amount but respects the final ti
     0,
   );
 });
+
+async function setPriceRules(h, extra) {
+  const before = (await h.request("/admin/events/red-moon/pricing")).body;
+  return h.request("/admin/events/red-moon/pricing", {
+    method: "PUT",
+    body: { revision: before.revision, tiers: before.tiers, ...extra },
+  });
+}
+
+test("dated prices and promo codes apply per ticket while freezing orders and idempotent retries", async (t) => {
+  const h = await harness(t);
+  await tieredEvent(h, 49);
+  await h.login();
+  const promos = [
+    { code: "fixed", kind: "fixed", value: 100000, active: true },
+    { code: "percent", kind: "percent", value: 1250, active: true },
+  ];
+  let edited = await setPriceRules(h, { promos });
+  assert.equal(edited.status, 200);
+  assert.equal(edited.body.promos[0].code, "FIXED");
+  const quote = (
+    await h.request("/events/red-moon/quote?quantity=3&promo_code=fixed")
+  ).body;
+  assert.equal(quote.subtotal, 2100000);
+  assert.equal(quote.discount_total, 300000);
+  assert.equal(quote.total, 1800000);
+  const key = randomUUID();
+  const body = {
+    ...guest,
+    quantity: 3,
+    promo_code: "fixed",
+    expected_total: 1800000,
+  };
+  const held = await h.order(body, key);
+  assert.equal(held.status, 201);
+  assert.equal(held.body.discount.code, "FIXED");
+  assert.equal(held.body.discount.discount_total, 300000);
+  assert.deepEqual(
+    held.body.price_breakdown.map((l) => [l.tier, l.quantity, l.unit_price]),
+    [
+      [0, 1, 400000],
+      [1, 2, 700000],
+    ],
+  );
+  // An activated date overrides both the first and second quantity price.
+  const schedule = [
+    { starts_at: new Date(Date.now() - 1000).toISOString(), price: 900000 },
+    {
+      starts_at: new Date(Date.now() + 86400000).toISOString(),
+      price: 1100000,
+    },
+  ];
+  edited = await setPriceRules(h, {
+    schedule,
+    promos: promos.map((p) => ({ ...p, active: p.code !== "fixed" })),
+  });
+  assert.equal(edited.status, 200);
+  assert.equal((await h.request("/events")).body[0].price, 900000);
+  assert.equal("promo_codes" in (await h.request("/events")).body[0], false);
+  const dated = (
+    await h.request("/events/red-moon/quote?quantity=3&promo_code=percent")
+  ).body;
+  assert.equal(dated.total, 2362500);
+  assert.equal(dated.discount_total, 337500);
+  assert.equal((await h.order(body, key)).body.id, held.body.id);
+  await h.store.markPaid(held.body.id);
+  const paid = await h.store.get(
+    "SELECT * FROM orders WHERE id=?",
+    held.body.id,
+  );
+  assert.equal(paid.total, 1800000);
+  assert.equal(paid.status, "paid");
+  assert.equal(
+    (
+      await h.store.get(
+        "SELECT COUNT(*) n FROM tickets WHERE order_id=?",
+        paid.id,
+      )
+    ).n,
+    3,
+  );
+  assert.equal(
+    (await h.request("/events/red-moon/quote?quantity=1&promo_code=FIXED")).body
+      .code,
+    "PROMO_INVALID",
+  );
+  const stale = await h.order({ ...guest, expected_total: 1600000 });
+  assert.equal(stale.status, 409);
+  assert.equal(stale.body.code, "PRICE_CHANGED");
+  const paidQuote = await h.order({
+    ...guest,
+    promo_code: "percent",
+    expected_total: 1575000,
+  });
+  assert.equal(paidQuote.status, 201);
+  // Old clients editing just quotas do not silently erase date or promo settings.
+  edited = await setPriceRules(h, {});
+  assert.equal(edited.body.schedule.length, 2);
+  assert.equal(edited.body.promos.length, 2);
+});
+
+test("fixed-price events support dates, promo snapshots and admin cash without changing existing orders", async (t) => {
+  const h = await harness(t);
+  await h.login();
+  const before = (await h.request("/admin/events/red-moon/pricing")).body;
+  const set = await setPriceRules(h, {
+    schedule: [
+      { starts_at: new Date(Date.now() - 1000).toISOString(), price: 600000 },
+    ],
+    promos: [{ code: "SALE", kind: "fixed", value: 50000, active: true }],
+  });
+  assert.equal(set.status, 200);
+  assert.equal(
+    (await h.order({ ...guest, promo_code: "SALE" })).body.code,
+    "PRICE_CHANGED",
+  );
+  assert.equal(
+    (await h.order({ ...guest, expected_total: before.tiers[0].price * 2 }))
+      .body.code,
+    "PRICE_CHANGED",
+  );
+  const order = await h.order({
+    ...guest,
+    promo_code: "sale",
+    expected_total: 1100000,
+  });
+  assert.equal(order.status, 201);
+  assert.equal(order.body.total, 1100000);
+  assert.equal(order.body.price_breakdown[0].unit_price, 550000);
+  const overview = (await h.request("/admin/events/red-moon/pricing")).body;
+  assert.equal(overview.tiers[0].reserved, 2);
+  const cash = await h.request("/admin/issue", {
+    method: "POST",
+    key: randomUUID(),
+    body: {
+      ...guest,
+      method: "cash",
+      cash_received: true,
+      expected_total: 1200000,
+    },
+  });
+  assert.equal(cash.status, 201);
+  assert.equal(
+    (await h.store.get("SELECT total FROM orders WHERE method='cash'")).total,
+    1200000,
+  );
+  assert.equal(
+    (await h.request("/admin/events/red-moon/pricing")).body.tiers[0].paid,
+    2,
+  );
+  // Schedule edits share the pricing revision and cannot overwrite newer promo changes.
+  assert.equal(
+    (
+      await h.request("/admin/events/red-moon/pricing", {
+        method: "PUT",
+        body: { revision: before.revision, tiers: before.tiers, schedule: [] },
+      })
+    ).body.code,
+    "PRICING_STALE",
+  );
+});
+
+test("invalid codes and invalid price rules cannot create a payable order or expose private codes", async (t) => {
+  const h = await harness(t);
+  await h.login();
+  const before = (await h.request("/admin/events/red-moon/pricing")).body;
+  for (const extra of [
+    { schedule: [{ starts_at: "2026-10-13", price: 800000 }] },
+    { schedule: [{ starts_at: "2026-10-13T00:00:00+03:00", price: -1 }] },
+    { promos: [{ code: "XX", kind: "percent", value: 10000, active: true }] },
+    { promos: [{ code: "XX", kind: "fixed", value: 50, active: true }] },
+    {
+      promos: [
+        { code: "XX", kind: "fixed", value: 100, active: true },
+        { code: "xx", kind: "fixed", value: 200, active: true },
+      ],
+    },
+  ])
+    assert.equal((await setPriceRules(h, extra)).status, 400);
+  assert.equal(
+    (await h.request("/admin/events/red-moon/pricing")).body.revision,
+    before.revision,
+  );
+  await setPriceRules(h, {
+    promos: [
+      { code: "TOOMUCH", kind: "fixed", value: 100000000, active: true },
+    ],
+  });
+  for (const promo_code of ["UNKNOWN", "TOOMUCH"]) {
+    assert.equal(
+      (await h.order({ ...guest, promo_code, expected_total: 1 })).body.code,
+      "PROMO_INVALID",
+    );
+  }
+  assert.equal((await h.store.get("SELECT COUNT(*) n FROM orders")).n, 0);
+  assert.equal(
+    (await h.request("/events")).body.some((e) => "promo_codes" in e),
+    false,
+  );
+  await h.login("door");
+  assert.equal((await h.request("/admin/events/red-moon/pricing")).status, 403);
+});

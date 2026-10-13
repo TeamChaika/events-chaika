@@ -1,8 +1,111 @@
 import { z } from "zod";
 import { createHash } from "node:crypto";
 
+const moneySchema = z.number().int().min(100).max(100000000);
+export const priceScheduleSchema = z
+  .array(
+    z.object({
+      starts_at: z.iso
+        .datetime({ offset: true })
+        .transform((value) => new Date(value).toISOString()),
+      price: moneySchema,
+    }),
+  )
+  .max(30)
+  .refine(
+    (rows) => new Set(rows.map((row) => row.starts_at)).size === rows.length,
+    "В расписании не может быть двух цен на один момент времени",
+  )
+  .transform((rows) =>
+    rows.sort((a, b) => a.starts_at.localeCompare(b.starts_at)),
+  );
+export const promoCodeSchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(
+    /^[A-ZА-ЯЁ0-9_-]{2,32}$/,
+    "Промокод: от 2 до 32 букв, цифр, дефисов или подчёркиваний",
+  );
+export const promoCodesSchema = z
+  .array(
+    z
+      .object({
+        code: promoCodeSchema,
+        kind: z.enum(["fixed", "percent"]),
+        // Fixed values are kopecks; percent values are hundredths of a percent.
+        value: z.number().int().min(1).max(100000000),
+        active: z.boolean(),
+      })
+      .refine(
+        (promo) =>
+          promo.kind === "fixed" ? promo.value >= 100 : promo.value <= 9900,
+        "Скидка: от 1 ₽ либо от 0,01% до 99%",
+      ),
+  )
+  .max(100)
+  .refine(
+    (rows) => new Set(rows.map((row) => row.code)).size === rows.length,
+    "Промокоды не должны повторяться",
+  );
+export const readSchedule = (raw) =>
+  priceScheduleSchema.parse(
+    raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : [],
+  );
+export const readPromos = (raw) =>
+  promoCodesSchema.parse(
+    raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : [],
+  );
+
+export function scheduledLines(lines, schedule, at = Date.now()) {
+  const current = schedule
+    .filter((row) => Date.parse(row.starts_at) <= at)
+    .at(-1);
+  return current
+    ? lines.map((line) => ({
+        ...line,
+        unit_price: current.price,
+        total: current.price * line.quantity,
+      }))
+    : lines;
+}
+
+export function discountedQuote(quantity, lines, promo) {
+  const subtotal = lines.reduce((sum, line) => sum + line.total, 0);
+  const discounted = promo
+    ? lines.map((line) => {
+        const discount =
+          promo.kind === "fixed"
+            ? promo.value
+            : Math.round((line.unit_price * promo.value) / 10000);
+        const unit_price = line.unit_price - discount;
+        if (unit_price < 100)
+          throw new Error("Цена билета после скидки должна быть не меньше 1 ₽");
+        return {
+          ...line,
+          base_unit_price: line.unit_price,
+          unit_price,
+          total: unit_price * line.quantity,
+        };
+      })
+    : lines;
+  const total = discounted.reduce((sum, line) => sum + line.total, 0);
+  return {
+    quantity,
+    lines: discounted,
+    total,
+    subtotal,
+    discount_total: subtotal - total,
+    promo: promo
+      ? { code: promo.code, kind: promo.kind, value: promo.value }
+      : null,
+  };
+}
+
 export const pricingUpdateSchema = z.object({
   revision: z.string().regex(/^[a-f0-9]{64}$/),
+  schedule: priceScheduleSchema.optional(),
+  promos: promoCodesSchema.optional(),
   tiers: z
     .array(
       z.object({
@@ -25,6 +128,8 @@ export const pricingRevision = (event) =>
         event.price,
         event.capacity,
         readTiers(event.price_tiers),
+        readSchedule(event.price_schedule),
+        readPromos(event.promo_codes),
       ]),
     )
     .digest("hex");
@@ -34,7 +139,13 @@ export const pricingRevision = (event) =>
 export function pricingAllocations(tiers, orders) {
   const legacyUsed = tiers.map(() => 0);
   return orders.map((order) => {
-    if (order.price_breakdown) return { order, lines: orderPriceLines(order) };
+    if (order.price_breakdown)
+      return {
+        order,
+        lines: orderPriceLines(order).map((line) =>
+          tiers.length === 1 ? { ...line, tier: 0 } : line,
+        ),
+      };
     const lines = allocate(tiers, legacyUsed, order.quantity).map((line) => {
       legacyUsed[line.tier] += line.quantity;
       return {

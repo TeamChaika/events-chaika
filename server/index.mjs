@@ -18,6 +18,7 @@ import {
   priceTiersSchema,
   orderPriceLines,
   pricingUpdateSchema,
+  promoCodeSchema,
 } from "./pricing.mjs";
 import { channelReady, processOutbox } from "./delivery.mjs";
 import { checkSmsAero } from "./smsaero.mjs";
@@ -315,6 +316,9 @@ export async function createApp({
     ),
   );
   app.get("/api/events/:id/quote", async (req, res) => {
+    const promoCode = req.query.promo_code
+      ? promoCodeSchema.parse(req.query.promo_code)
+      : "";
     const quantity = z.coerce
       .number()
       .int()
@@ -333,7 +337,7 @@ export async function createApp({
         throw new AppError(409, "Продажа билетов закрыта");
       if (e.available < quantity)
         throw new AppError(409, "Недостаточно свободных билетов");
-      return store.quote(e.id, quantity);
+      return store.quote(e.id, quantity, promoCode);
     });
     res.json(quote);
   });
@@ -395,6 +399,7 @@ export async function createApp({
       quantity: o.quantity,
       unit_price: o.unit_price,
       price_breakdown: orderPriceLines(o),
+      discount: o.discount_snapshot ? JSON.parse(o.discount_snapshot) : null,
       total: o.total,
       status: o.status,
       voided_at: o.voided_at,
@@ -425,6 +430,9 @@ export async function createApp({
   };
   app.post("/api/orders", orderLimit, async (req, res) => {
     const input = customerSchema.parse(req.body);
+    const promoCode = req.body.promo_code
+      ? promoCodeSchema.parse(req.body.promo_code)
+      : "";
     if (!availability())
       throw new AppError(
         503,
@@ -464,6 +472,7 @@ export async function createApp({
     const requestHash = hash(
       JSON.stringify({
         input,
+        ...(promoCode ? { promo_code: promoCode } : {}),
         ...(expectedTotal === undefined
           ? {}
           : { expected_total: expectedTotal }),
@@ -498,9 +507,10 @@ export async function createApp({
         throw new AppError(409, "Продажа билетов закрыта");
       if (e.available < input.quantity)
         throw new AppError(409, "Недостаточно свободных билетов");
-      const price = await store.quote(e.id, input.quantity);
+      const price = await store.quote(e.id, input.quantity, promoCode);
       if (
-        (e.price_tiers && expectedTotal === undefined) ||
+        ((e.price_tiers || e.has_price_schedule || promoCode) &&
+          expectedTotal === undefined) ||
         (expectedTotal !== undefined && expectedTotal !== price.total)
       )
         throw new AppError(
@@ -515,7 +525,17 @@ export async function createApp({
         ...input,
         unit_price: price.lines[0].unit_price,
         total: price.total,
-        price_breakdown: e.price_tiers ? JSON.stringify(price.lines) : null,
+        price_breakdown:
+          e.price_tiers || e.has_price_schedule || promoCode
+            ? JSON.stringify(price.lines)
+            : null,
+        discount_snapshot: price.promo
+          ? JSON.stringify({
+              ...price.promo,
+              subtotal: price.subtotal,
+              discount_total: price.discount_total,
+            })
+          : null,
         status: demo ? "pending" : "creating",
         method: "sbp",
         mode: mode(),
@@ -894,7 +914,8 @@ export async function createApp({
           : await store.quote(e.id, input.quantity);
       if (
         method === "cash" &&
-        ((e.price_tiers && expectedTotal === undefined) ||
+        (((e.price_tiers || e.has_price_schedule) &&
+          expectedTotal === undefined) ||
           (expectedTotal !== undefined && expectedTotal !== price.total))
       )
         throw new AppError(
@@ -910,7 +931,7 @@ export async function createApp({
         unit_price: price.lines[0].unit_price,
         total: price.total,
         price_breakdown:
-          method !== "invite" && e.price_tiers
+          method !== "invite" && (e.price_tiers || e.has_price_schedule)
             ? JSON.stringify(price.lines)
             : null,
         status: "pending",

@@ -2,9 +2,13 @@ import { useEffect, useState } from "react";
 import { api, money, type PriceQuote, type PriceTier } from "./types";
 import "./pricing.css";
 
-export function usePriceQuote(eventId: string, quantity: number) {
+export function usePriceQuote(
+  eventId: string,
+  quantity: number,
+  promoCode = "",
+) {
   const [revision, setRevision] = useState(0);
-  const requestKey = `${eventId}:${quantity}:${revision}`;
+  const requestKey = `${eventId}:${quantity}:${promoCode}:${revision}`;
   const [state, setState] = useState<{
     key: string;
     quote?: PriceQuote;
@@ -13,7 +17,7 @@ export function usePriceQuote(eventId: string, quantity: number) {
   useEffect(() => {
     const controller = new AbortController();
     api<PriceQuote>(
-      `/events/${encodeURIComponent(eventId)}/quote?quantity=${quantity}`,
+      `/events/${encodeURIComponent(eventId)}/quote?quantity=${quantity}${promoCode ? `&promo_code=${encodeURIComponent(promoCode)}` : ""}`,
       { signal: controller.signal },
     )
       .then((quote) => setState({ key: requestKey, quote }))
@@ -22,7 +26,7 @@ export function usePriceQuote(eventId: string, quantity: number) {
           setState({ key: requestKey, error: (error as Error).message });
       });
     return () => controller.abort();
-  }, [eventId, quantity, requestKey]);
+  }, [eventId, quantity, promoCode, requestKey]);
   return {
     quote: state?.key === requestKey ? state.quote : undefined,
     quoteError: state?.key === requestKey ? state.error : undefined,
@@ -44,6 +48,12 @@ export function PriceBreakdown({ quote }: { quote?: PriceQuote }) {
         ))
       ) : (
         <p role="status">Уточняем стоимость…</p>
+      )}
+      {quote?.promo && (
+        <div className="promo-summary">
+          <span>Скидка по коду {quote.promo.code}</span>
+          <strong>−{money(quote.discount_total)}</strong>
+        </div>
       )}
     </div>
   );

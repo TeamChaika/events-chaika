@@ -9,6 +9,9 @@ export type PriceQuote = {
   quantity: number;
   lines: PriceLine[];
   total: number;
+  subtotal: number;
+  discount_total: number;
+  promo: { code: string; kind: "fixed" | "percent"; value: number } | null;
 };
 export class ApiError extends Error {
   code?: string;

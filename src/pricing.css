@@ -67,6 +67,39 @@
   gap: 12px;
   margin: 8px 0;
 }
+.admin-price-rules {
+  margin: 30px 0;
+  padding-top: 20px;
+  border-top: 1px solid #e64a4133;
+}
+.admin-price-rules h3 {
+  font-size: 20px;
+}
+.admin-price-rules .admin-pricing-tier > label {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.admin-price-rules .admin-pricing-tier > .checkbox-label {
+  display: flex;
+}
+.checkout-promo {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  margin-top: 20px;
+}
+.checkout-promo label {
+  flex: 1;
+  min-width: 0;
+}
+.checkout-promo .button {
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+.promo-summary {
+  color: #f5ddd4;
+}
 @media (max-width: 600px) {
   .price-schedule {
     grid-template-columns: 1fr;

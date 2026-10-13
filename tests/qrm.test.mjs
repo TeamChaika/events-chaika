@@ -8,6 +8,7 @@ import {
   checkMerchant,
 } from "../server/qrm.mjs";
 import { randomUUID } from "node:crypto";
+import { discountedQuote } from "../server/pricing.mjs";
 
 test("status schema requires an exact integer amount", () => {
   assert.deepEqual(
@@ -177,6 +178,31 @@ test("QRM creation preflights terminal, uses kopecks and correlates callback", a
     [
       [2, 500000, 1000000],
       [1, 800000, 800000],
+    ],
+  );
+  calls.length = 0;
+  const reduced = discountedQuote(3, lines, {
+    code: "TEST",
+    kind: "fixed",
+    value: 100000,
+  });
+  await createPayment(
+    {
+      ...order,
+      quantity: 3,
+      total: reduced.total,
+      price_breakdown: JSON.stringify(reduced.lines),
+    },
+    { title: "Тестовое событие" },
+    "https://events.example.com",
+  );
+  const discounted = JSON.parse(calls[1].init.body);
+  assert.equal(discounted.sum, 1500000);
+  assert.deepEqual(
+    discounted.nomenclature.map((l) => [l.count, l.price, l.amount]),
+    [
+      [2, 400000, 800000],
+      [1, 700000, 700000],
     ],
   );
   calls.length = 0;
