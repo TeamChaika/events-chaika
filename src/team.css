@@ -123,6 +123,7 @@ body:has(.team-app) {
   gap: 4px;
   border-bottom: 1px solid var(--team-line);
   margin: 22px 0;
+  overflow-x: auto;
 }
 .team-tabs button {
   display: flex;
@@ -137,6 +138,45 @@ body:has(.team-app) {
   padding: 14px 4px;
   font-size: 13px;
   font-weight: 600;
+  white-space: nowrap;
+}
+.team-promo-form fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.team-promo-form .form-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.team-promo-form .small-text {
+  color: var(--team-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.team-promo-form .checkbox-label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.team-promo-form input[type="checkbox"] {
+  width: 20px;
+  min-height: 20px;
+}
+@media (max-width: 480px) {
+  .team-tabs button {
+    flex-direction: column;
+    gap: 5px;
+    min-width: 75px;
+  }
+  .team-promo-form .form-row {
+    grid-template-columns: 1fr;
+  }
 }
 .team-tabs button[aria-current] {
   color: #fff;

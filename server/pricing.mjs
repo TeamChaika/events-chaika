@@ -36,11 +36,28 @@ export const promoCodesSchema = z
         // Fixed values are kopecks; percent values are hundredths of a percent.
         value: z.number().int().min(1).max(100000000),
         active: z.boolean(),
+        limit_scope: z.enum(["orders", "tickets"]).default("orders"),
+        max_uses: z.number().int().min(1).max(1000000).nullable().default(null),
+        starts_at: z.iso
+          .datetime({ offset: true })
+          .transform((v) => new Date(v).toISOString())
+          .nullable()
+          .default(null),
+        ends_at: z.iso
+          .datetime({ offset: true })
+          .transform((v) => new Date(v).toISOString())
+          .nullable()
+          .default(null),
       })
       .refine(
         (promo) =>
           promo.kind === "fixed" ? promo.value >= 100 : promo.value <= 9900,
         "Скидка: от 1 ₽ либо от 0,01% до 99%",
+      )
+      .refine(
+        (promo) =>
+          !promo.starts_at || !promo.ends_at || promo.starts_at < promo.ends_at,
+        "Окончание промокода должно быть позже начала",
       ),
   )
   .max(100)
@@ -70,10 +87,14 @@ export function scheduledLines(lines, schedule, at = Date.now()) {
     : lines;
 }
 
-export function discountedQuote(quantity, lines, promo) {
+export function discountedQuote(quantity, lines, promo, eligible = quantity) {
   const subtotal = lines.reduce((sum, line) => sum + line.total, 0);
+  let remaining = eligible;
   const discounted = promo
-    ? lines.map((line) => {
+    ? lines.flatMap((line) => {
+        const count = Math.min(remaining, line.quantity);
+        remaining -= count;
+        if (!count) return [line];
         const discount =
           promo.kind === "fixed"
             ? promo.value
@@ -81,12 +102,23 @@ export function discountedQuote(quantity, lines, promo) {
         const unit_price = line.unit_price - discount;
         if (unit_price < 100)
           throw new Error("Цена билета после скидки должна быть не меньше 1 ₽");
-        return {
+        const discountedLine = {
           ...line,
+          quantity: count,
           base_unit_price: line.unit_price,
           unit_price,
-          total: unit_price * line.quantity,
+          total: unit_price * count,
         };
+        return count === line.quantity
+          ? [discountedLine]
+          : [
+              discountedLine,
+              {
+                ...line,
+                quantity: line.quantity - count,
+                total: (line.quantity - count) * line.unit_price,
+              },
+            ];
       })
     : lines;
   const total = discounted.reduce((sum, line) => sum + line.total, 0);
@@ -97,7 +129,14 @@ export function discountedQuote(quantity, lines, promo) {
     subtotal,
     discount_total: subtotal - total,
     promo: promo
-      ? { code: promo.code, kind: promo.kind, value: promo.value }
+      ? {
+          code: promo.code,
+          kind: promo.kind,
+          value: promo.value,
+          limit_scope: promo.limit_scope || "orders",
+          max_uses: promo.max_uses ?? null,
+          discounted_quantity: eligible,
+        }
       : null,
   };
 }

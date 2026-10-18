@@ -50,6 +50,11 @@ export async function openStore(
       id TEXT PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id), code TEXT NOT NULL,
       quantity INTEGER NOT NULL CHECK(quantity>0), expected_checked INTEGER NOT NULL,
       entered_at TEXT NOT NULL, ordinals TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS wristband_batches (
+      id TEXT PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id), code TEXT NOT NULL,
+      quantity INTEGER NOT NULL CHECK(quantity>0), expected_checked INTEGER NOT NULL,
+      issued_at TEXT NOT NULL, actor TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS wristband_batches_order ON wristband_batches(order_id);
     CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, role TEXT NOT NULL, expires_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS outbox (
       id TEXT PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id), channel TEXT NOT NULL,
@@ -116,6 +121,7 @@ export async function openStore(
             "orders",
             "tickets",
             "checkin_batches",
+            "wristband_batches",
             "sessions",
             "outbox",
             "audit",
@@ -241,6 +247,31 @@ export async function openStore(
       excludeId,
       pricingMode,
     );
+  // Usage comes from frozen orders, so editing or re-adding a code cannot reset it.
+  const promoUsage = async (id, excludeId = "") => {
+    const rows = await all(
+      "SELECT quantity,status,discount_snapshot FROM orders WHERE event_id=? AND id!=? AND mode=? AND is_test=0 AND method!='invite' AND discount_snapshot IS NOT NULL AND (status IN ('paid','paid_review') OR (voided_at IS NULL AND status IN ('creating','pending','unknown')))",
+      id,
+      excludeId,
+      pricingMode,
+    );
+    const usage = {};
+    for (const row of rows) {
+      const promo = JSON.parse(row.discount_snapshot);
+      const counts = (usage[promo.code] ||= {
+        paid_orders: 0,
+        held_orders: 0,
+        paid_tickets: 0,
+        held_tickets: 0,
+      });
+      const state = ["paid", "paid_review"].includes(row.status)
+        ? "paid"
+        : "held";
+      counts[`${state}_orders`]++;
+      counts[`${state}_tickets`] += promo.discounted_quantity ?? row.quantity;
+    }
+    return usage;
+  };
   const quote = async (id, quantity, promoCode = "") => {
     const e = await get("SELECT * FROM events WHERE id=?", id);
     if (!e) throw new AppError(404, "Мероприятие не найдено");
@@ -259,9 +290,37 @@ export async function openStore(
         "Промокод не найден или отключён для этого мероприятия",
         "PROMO_INVALID",
       );
+    let eligible = quantity;
+    if (promo) {
+      const at = Date.now();
+      if (
+        (promo.starts_at && at < Date.parse(promo.starts_at)) ||
+        (promo.ends_at && at >= Date.parse(promo.ends_at))
+      )
+        throw new AppError(
+          400,
+          "Промокод не действует в это время",
+          "PROMO_INVALID",
+        );
+      if (promo.max_uses !== null) {
+        const usage = (await promoUsage(id))[promo.code];
+        const used =
+          (usage?.[`paid_${promo.limit_scope}`] || 0) +
+          (usage?.[`held_${promo.limit_scope}`] || 0);
+        const available = promo.max_uses - used;
+        if (available <= 0)
+          throw new AppError(
+            400,
+            "Лимит промокода исчерпан или зарезервирован в неоплаченных заказах",
+            "PROMO_INVALID",
+          );
+        if (promo.limit_scope === "tickets")
+          eligible = Math.min(quantity, available);
+      }
+    }
     const priced = scheduledLines(lines, readSchedule(e.price_schedule));
     try {
-      return discountedQuote(quantity, priced, promo);
+      return discountedQuote(quantity, priced, promo, eligible);
     } catch (error) {
       throw new AppError(400, error.message, "PROMO_INVALID");
     }
@@ -294,6 +353,7 @@ export async function openStore(
         occupied: Number(await reserved(id)),
         schedule: readSchedule(e.price_schedule),
         promos: readPromos(e.promo_codes),
+        promo_usage: await promoUsage(id),
         tiers: tiers.map((tier, index) => {
           let paid = 0,
             held = 0;
@@ -471,9 +531,35 @@ export async function openStore(
         o.method !== "invite"
       ) {
         const priceEvent = await get(
-          "SELECT price_tiers,capacity FROM events WHERE id=?",
+          "SELECT price_tiers,capacity,promo_codes FROM events WHERE id=?",
           o.event_id,
         );
+        if (o.discount_snapshot) {
+          const snapshot = JSON.parse(o.discount_snapshot);
+          const promo =
+            readPromos(priceEvent.promo_codes).find(
+              (p) => p.code === snapshot.code,
+            ) || snapshot;
+          if (promo.max_uses != null) {
+            const scope = promo.limit_scope || "orders";
+            const usage = (await promoUsage(o.event_id, o.id))[snapshot.code];
+            const used =
+              (usage?.[`paid_${scope}`] || 0) + (usage?.[`held_${scope}`] || 0);
+            const amount =
+              scope === "orders"
+                ? 1
+                : (snapshot.discounted_quantity ?? o.quantity);
+            if (used + amount > promo.max_uses) {
+              await run(
+                "UPDATE orders SET status='paid_review',paid_at=?,diagnostic='Поздняя оплата: лимит промокода уже занят, требуется проверка' WHERE id=?",
+                new Date().toISOString(),
+                id,
+              );
+              await enqueue(id, "review");
+              return;
+            }
+          }
+        }
         const tiers = readTiers(priceEvent.price_tiers);
         if (tiers) {
           const used = tierUsage(tiers, await pricingOrders(o.event_id, o.id));
@@ -482,9 +568,12 @@ export async function openStore(
             : allocate(tiers, used, o.quantity);
           const unavailable = lines.some((line) => {
             const upper = tiers[line.tier]?.up_to ?? priceEvent.capacity;
+            const quantity = lines
+              .filter((l) => l.tier === line.tier)
+              .reduce((n, l) => n + l.quantity, 0);
             return (
               !tiers[line.tier] ||
-              used[line.tier] + line.quantity >
+              used[line.tier] + quantity >
                 upper - (tiers[line.tier - 1]?.up_to || 0)
             );
           });
@@ -528,6 +617,23 @@ export async function openStore(
     const counts = await get(
       "SELECT COUNT(*) AS issued,COALESCE(SUM(CASE WHEN used_at IS NOT NULL THEN 1 ELSE 0 END),0) AS checked FROM tickets WHERE order_id=?",
       orderId,
+    );
+    return { ...counts, remaining: counts.issued - counts.checked };
+  };
+  // Same counter shape as entry scanning; handouts live in their own ledger.
+  const orderWristbands = async (orderId) => {
+    const counts = await get(
+      "SELECT (SELECT COUNT(*) FROM tickets WHERE order_id=?) AS issued, COALESCE(SUM(quantity),0) AS checked FROM wristband_batches WHERE order_id=?",
+      orderId,
+      orderId,
+    );
+    return { ...counts, remaining: counts.issued - counts.checked };
+  };
+  const wristbandSummary = async (eventId, allowTest = false) => {
+    const counts = await get(
+      "SELECT CAST(COALESCE(SUM((SELECT COUNT(*) FROM tickets t WHERE t.order_id=o.id)),0) AS BIGINT) AS issued, CAST(COALESCE(SUM((SELECT COALESCE(SUM(w.quantity),0) FROM wristband_batches w WHERE w.order_id=o.id)),0) AS BIGINT) AS checked FROM orders o WHERE o.event_id=? AND o.status='paid' AND o.voided_at IS NULL AND o.is_test=0 AND (?=1 OR o.mode='live')",
+      eventId,
+      allowTest ? 1 : 0,
     );
     return { ...counts, remaining: counts.issued - counts.checked };
   };
@@ -606,6 +712,85 @@ export async function openStore(
     transaction(async () => {
       const t = await ticketForCheckin(code, eventId, allowTest);
       return { ...t, group: await orderAttendance(t.order_id) };
+    });
+  const previewWristbands = async (code, eventId, allowTest = false) =>
+    transaction(async () => {
+      const t = await ticketForCheckin(code, eventId, allowTest);
+      return { ...t, group: await orderWristbands(t.order_id) };
+    });
+  const issueWristbands = async (
+    code,
+    eventId,
+    quantity,
+    expectedChecked,
+    requestId,
+    actor,
+    allowTest = false,
+  ) =>
+    transaction(async () => {
+      const t = await ticketForCheckin(code, eventId, allowTest);
+      const previous = await get(
+        "SELECT * FROM wristband_batches WHERE id=?",
+        requestId,
+      );
+      if (
+        previous &&
+        (previous.order_id !== t.order_id ||
+          previous.code !== code ||
+          previous.quantity !== quantity ||
+          previous.expected_checked !== expectedChecked)
+      )
+        throw new AppError(
+          409,
+          "Этот запрос уже использован для другой выдачи браслетов",
+        );
+      if (!previous) {
+        const group = await orderWristbands(t.order_id);
+        if (group.checked !== expectedChecked)
+          throw new AppError(
+            409,
+            "Количество выданных браслетов изменилось. Обновите данные заказа.",
+          );
+        if (
+          !Number.isInteger(quantity) ||
+          quantity < 1 ||
+          quantity > group.remaining
+        )
+          throw new AppError(
+            409,
+            `Можно выдать не более ${group.remaining} браслетов`,
+          );
+        await run(
+          "INSERT INTO wristband_batches(id,order_id,code,quantity,expected_checked,issued_at,actor) VALUES (?,?,?,?,?,?,?)",
+          requestId,
+          t.order_id,
+          code,
+          quantity,
+          expectedChecked,
+          new Date().toISOString(),
+          actor,
+        );
+        await audit(
+          JSON.stringify({
+            action: "wristbands_issued",
+            quantity,
+            request_id: requestId,
+          }),
+          t.order_id,
+          actor,
+        );
+      }
+      const batch =
+        previous ||
+        (await get("SELECT * FROM wristband_batches WHERE id=?", requestId));
+      return {
+        ...t,
+        accepted: true,
+        admitted: batch.quantity,
+        used_at: batch.issued_at,
+        replayed: Boolean(previous),
+        group: await orderWristbands(t.order_id),
+      };
     });
   const checkinGroup = async (
     code,
@@ -771,6 +956,7 @@ export async function openStore(
     reserved,
     quote,
     pricingOverview,
+    promoUsage,
     updatePricing,
     enqueue,
     markPaid,
@@ -780,6 +966,10 @@ export async function openStore(
     searchTickets,
     previewCheckin,
     checkinGroup,
+    orderWristbands,
+    wristbandSummary,
+    previewWristbands,
+    issueWristbands,
     manageOrder,
   };
 }

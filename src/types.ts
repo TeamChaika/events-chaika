@@ -11,7 +11,12 @@ export type PriceQuote = {
   total: number;
   subtotal: number;
   discount_total: number;
-  promo: { code: string; kind: "fixed" | "percent"; value: number } | null;
+  promo: {
+    code: string;
+    kind: "fixed" | "percent";
+    value: number;
+    discounted_quantity: number;
+  } | null;
 };
 export class ApiError extends Error {
   code?: string;

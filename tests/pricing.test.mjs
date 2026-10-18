@@ -7,6 +7,48 @@ import {
   promoCodesSchema,
 } from "../server/pricing.mjs";
 
+test("ticket-limited discounts split a tier without losing quantities or rounding per ticket", () => {
+  const quote = discountedQuote(
+    5,
+    [
+      { tier: 0, quantity: 1, unit_price: 500000, total: 500000 },
+      { tier: 1, quantity: 4, unit_price: 800000, total: 3200000 },
+    ],
+    { code: "PART", kind: "percent", value: 1500, limit_scope: "tickets" },
+    2,
+  );
+  assert.deepEqual(
+    quote.lines.map((l) => [l.tier, l.quantity, l.unit_price]),
+    [
+      [0, 1, 425000],
+      [1, 1, 680000],
+      [1, 3, 800000],
+    ],
+  );
+  assert.equal(quote.promo.discounted_quantity, 2);
+  assert.equal(quote.total, 3505000);
+  assert.equal(quote.discount_total, 195000);
+});
+
+test("legacy promos stay unlimited; invalid limits and date intervals are rejected", () => {
+  const base = { code: "SAVE", kind: "fixed", value: 50000, active: true };
+  const [legacy] = promoCodesSchema.parse([base]);
+  assert.equal(legacy.limit_scope, "orders");
+  assert.equal(legacy.max_uses, null);
+  for (const patch of [
+    { max_uses: 0 },
+    { max_uses: 1.5 },
+    { max_uses: "1" },
+    { limit_scope: "guest" },
+    { starts_at: "2026-10-20T00:00" },
+    { starts_at: "2026-10-20T00:00:00+03:00", ends_at: "2026-10-19T21:00:00Z" },
+  ])
+    assert.equal(
+      promoCodesSchema.safeParse([{ ...base, ...patch }]).success,
+      false,
+    );
+});
+
 test("dated prices replace quantity prices exactly at midnight in Moscow and persist until next date", () => {
   const schedule = priceScheduleSchema.parse([
     { starts_at: "2026-10-20T00:00:00+03:00", price: 1000000 },

@@ -1881,7 +1881,7 @@ test("production CSP separates public posters, private pages and the Telegram pa
       );
       assert.equal(
         policy.includes("https://telegram.org"),
-        path === "/team",
+        false,
         path,
       );
       assert.ok(!policy.includes("unsafe-eval"));
@@ -2527,6 +2527,289 @@ async function setPriceRules(h, extra) {
     body: { revision: before.revision, tiers: before.tiers, ...extra },
   });
 }
+
+test("order promo limit reserves one use per order, survives retries and edits, and releases confirmed failures", async (t) => {
+  const h = await harness(t);
+  await h.login();
+  const promo = {
+    code: "ONCE",
+    kind: "fixed",
+    value: 50000,
+    active: true,
+    limit_scope: "orders",
+    max_uses: 1,
+  };
+  assert.equal((await setPriceRules(h, { promos: [promo] })).status, 200);
+  for (let i = 0; i < 2; i++) {
+    const quote = await h.request(
+      "/events/red-moon/quote?quantity=5&promo_code=ONCE",
+    );
+    assert.equal(quote.body.discount_total, 250000);
+  }
+  const body = {
+    ...guest,
+    quantity: 5,
+    promo_code: "ONCE",
+    expected_total: 2250000,
+  };
+  const keys = [randomUUID(), randomUUID()];
+  const attempts = await Promise.all(keys.map((key) => h.order(body, key)));
+  assert.deepEqual(attempts.map((r) => r.status).sort(), [201, 400]);
+  const index = attempts.findIndex((r) => r.status === 201);
+  const held = attempts[index].body;
+  assert.equal((await h.order(body, keys[index])).body.id, held.id);
+  let overview = (await h.request("/admin/events/red-moon/pricing")).body;
+  assert.equal(overview.promo_usage.ONCE.held_orders, 1);
+  assert.equal(overview.promo_usage.ONCE.held_tickets, 5);
+  await h.store.run("UPDATE orders SET status='failed' WHERE id=?", held.id);
+  const next = await h.order(body);
+  assert.equal(next.status, 201);
+  await h.store.markPaid(next.body.id);
+  await setPriceRules(h, { promos: [] });
+  await setPriceRules(h, { promos: [promo] });
+  assert.equal((await h.order(body)).status, 400);
+  overview = (await h.request("/admin/events/red-moon/pricing")).body;
+  assert.equal(overview.promo_usage.ONCE.paid_orders, 1);
+  // A late bank confirmation cannot issue another set of discounted tickets.
+  await h.store.markPaid(held.id);
+  assert.equal(
+    (await h.store.get("SELECT status FROM orders WHERE id=?", held.id)).status,
+    "paid_review",
+  );
+  assert.equal(
+    (
+      await h.store.get(
+        "SELECT COUNT(*) AS n FROM tickets WHERE order_id=?",
+        held.id,
+      )
+    ).n,
+    0,
+  );
+});
+
+test("ticket promo caps apply to part of the order and freeze discount snapshots", async (t) => {
+  const h = await harness(t);
+  await h.login();
+  const promo = {
+    code: "TWO",
+    kind: "percent",
+    value: 1500,
+    active: true,
+    limit_scope: "tickets",
+    max_uses: 2,
+  };
+  await setPriceRules(h, { promos: [promo] });
+  const quote = (
+    await h.request("/events/red-moon/quote?quantity=5&promo_code=TWO")
+  ).body;
+  assert.equal(quote.promo.discounted_quantity, 2);
+  assert.equal(quote.total, 2350000);
+  assert.deepEqual(
+    quote.lines.map((l) => [l.quantity, l.unit_price]),
+    [
+      [2, 425000],
+      [3, 500000],
+    ],
+  );
+  const order = await h.order({
+    ...guest,
+    quantity: 5,
+    promo_code: "TWO",
+    expected_total: quote.total,
+  });
+  assert.equal(order.status, 201);
+  assert.equal(
+    (await h.request("/events/red-moon/quote?quantity=1&promo_code=TWO"))
+      .status,
+    400,
+  );
+  await h.store.markPaid(order.body.id);
+  // Changing counting units reuses historical usage in the selected units.
+  await setPriceRules(h, { promos: [{ ...promo, limit_scope: "orders" }] });
+  assert.equal(
+    (await h.request("/events/red-moon/quote?quantity=5&promo_code=TWO")).body
+      .promo.discounted_quantity,
+    5,
+  );
+  assert.equal(
+    (
+      await h.store.get(
+        "SELECT COUNT(*) AS n FROM tickets WHERE order_id=?",
+        order.body.id,
+      )
+    ).n,
+    5,
+  );
+  assert.equal(
+    JSON.parse(
+      (
+        await h.store.get(
+          "SELECT discount_snapshot FROM orders WHERE id=?",
+          order.body.id,
+        )
+      ).discount_snapshot,
+    ).discounted_quantity,
+    2,
+  );
+  const stats = (await h.request("/admin/events/red-moon/pricing")).body
+    .promo_usage.TWO;
+  assert.equal(stats.paid_tickets, 2);
+  assert.equal(stats.paid_orders, 1);
+});
+
+test("promo time bounds are inclusive at start and exclusive at end; reserved orders keep their discount", async (t) => {
+  const h = await harness(t);
+  await h.login();
+  const at = Date.now();
+  const promo = {
+    code: "TIME",
+    kind: "percent",
+    value: 500,
+    active: true,
+    starts_at: new Date(at).toISOString(),
+    ends_at: new Date(at + 60000).toISOString(),
+  };
+  await setPriceRules(h, { promos: [promo] });
+  const quote = () =>
+    h.store.transaction(() => h.store.quote("red-moon", 2, "TIME"));
+  const clock = t.mock.method(Date, "now", () => at - 1);
+  await assert.rejects(quote, /не действует/);
+  clock.mock.mockImplementation(() => at);
+  assert.equal((await quote()).total, 950000);
+  clock.mock.mockImplementation(() => at + 60000);
+  await assert.rejects(quote, /не действует/);
+  clock.mock.restore();
+  const held = await h.order({
+    ...guest,
+    promo_code: "TIME",
+    expected_total: 950000,
+  });
+  assert.equal(held.status, 201);
+  await setPriceRules(h, { promos: [{ ...promo, active: false }] });
+  await h.store.markPaid(held.body.id);
+  assert.equal(
+    (await h.store.get("SELECT total FROM orders WHERE id=?", held.body.id))
+      .total,
+    950000,
+  );
+});
+
+test("wristband handouts are authenticated, partial, idempotent and independent of entry", async (t) => {
+  const h = await harness(t);
+  const order = (await h.order({ ...guest, quantity: 5 })).body;
+  await h.store.markPaid(order.id);
+  const tickets = await h.store.all(
+    "SELECT * FROM tickets WHERE order_id=? ORDER BY ordinal",
+    order.id,
+  );
+  const body = { event_id: "red-moon", code: tickets[0].code };
+  const preview = () =>
+    h.request("/wristbands/preview", { method: "POST", body });
+  const issue = (
+    quantity,
+    expected_checked,
+    request_id = randomUUID(),
+    code = body.code,
+  ) =>
+    h.request("/wristbands/group", {
+      method: "POST",
+      body: { ...body, code, quantity, expected_checked, request_id },
+    });
+  assert.equal((await preview()).status, 401);
+  assert.equal((await issue(1, 0)).status, 401);
+  assert.equal(
+    (await h.request("/wristbands/summary?event_id=red-moon")).status,
+    401,
+  );
+  await h.login("door");
+  assert.equal((await preview()).body.group.remaining, 5);
+  const id = randomUUID();
+  const first = await issue(3, 0, id);
+  assert.equal(first.status, 200);
+  assert.deepEqual(first.body.group, { issued: 5, checked: 3, remaining: 2 });
+  assert.equal((await issue(3, 0, id)).body.replayed, true);
+  assert.equal((await issue(2, 0, id)).status, 409);
+  assert.equal((await issue(1, 0)).status, 409);
+  assert.equal((await issue(3, 3)).status, 409);
+  assert.equal((await issue(0, 3)).status, 400);
+  assert.equal((await h.store.attendance("red-moon", true)).checked, 0);
+  const search = await h.request("/wristbands/search", {
+    method: "POST",
+    body: { event_id: "red-moon", query: "Проверочный" },
+  });
+  assert.equal(search.body.orders[0].group.checked, 3);
+  const entrants = await h.request("/checkin/group", {
+    method: "POST",
+    body: {
+      ...body,
+      quantity: 4,
+      expected_checked: 0,
+      request_id: randomUUID(),
+    },
+  });
+  assert.equal(entrants.status, 200);
+  assert.equal((await preview()).body.group.checked, 3);
+  // Another QR from the same group shares the wristband balance, even after entry.
+  const parallel = await Promise.all([
+    issue(2, 3),
+    issue(2, 3, randomUUID(), tickets[3].code),
+  ]);
+  assert.deepEqual(parallel.map((r) => r.status).sort(), [200, 409]);
+  assert.equal((await h.store.attendance("red-moon", true)).checked, 4);
+  assert.equal((await preview()).body.group.remaining, 0);
+  const summary = (await h.request("/wristbands/summary?event_id=red-moon"))
+    .body;
+  assert.equal(summary.checked, 5);
+  assert.equal(summary.remaining, 0);
+  assert.equal(
+    (await h.store.get("SELECT COUNT(*) AS n FROM wristband_batches")).n,
+    2,
+  );
+});
+
+test("wristbands reject unpaid, voided, test and wrong-event tickets", async (t) => {
+  const h = await harness(t);
+  const order = (await h.order({ ...guest, quantity: 1 })).body;
+  await h.store.markPaid(order.id);
+  const ticket = await h.store.get(
+    "SELECT * FROM tickets WHERE order_id=?",
+    order.id,
+  );
+  await h.login("door");
+  const issue = (event_id = "red-moon") =>
+    h.request("/wristbands/group", {
+      method: "POST",
+      body: {
+        event_id,
+        code: ticket.code,
+        quantity: 1,
+        expected_checked: 0,
+        request_id: randomUUID(),
+      },
+    });
+  assert.equal((await issue("other")).status, 409);
+  for (const [column, value, reset] of [
+    ["status", "pending", "paid"],
+    ["voided_at", new Date().toISOString(), null],
+    ["is_test", 1, 0],
+  ]) {
+    await h.store.run(
+      `UPDATE orders SET ${column}=? WHERE id=?`,
+      value,
+      order.id,
+    );
+    assert.equal((await issue()).status, 409);
+    await h.store.run(
+      `UPDATE orders SET ${column}=? WHERE id=?`,
+      reset,
+      order.id,
+    );
+  }
+  assert.equal(
+    (await h.store.get("SELECT COUNT(*) AS n FROM wristband_batches")).n,
+    0,
+  );
+});
 
 test("dated prices and promo codes apply per ticket while freezing orders and idempotent retries", async (t) => {
   const h = await harness(t);

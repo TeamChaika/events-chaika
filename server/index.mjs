@@ -170,7 +170,6 @@ export async function createApp({
               scriptSrc: [
                 "'self'",
                 analyticsSource,
-                (req) => (req.path === "/team" ? "https://telegram.org" : ""),
               ],
               styleSrc: ["'self'", "'unsafe-inline'"],
               imgSrc: ["'self'", "data:", "blob:", analyticsSource],
@@ -1049,6 +1048,59 @@ export async function createApp({
     if (!(await store.event(event_id)))
       throw new AppError(404, "Мероприятие не найдено");
     res.json(await store.searchTickets(event_id, query, demo));
+  });
+  app.post("/api/wristbands/search", staff, async (req, res) => {
+    const { event_id, query } = z
+      .object({
+        event_id: z.string().min(1).max(100),
+        query: z.string().trim().min(1).max(120),
+      })
+      .parse(req.body);
+    if (!(await store.event(event_id)))
+      throw new AppError(404, "Мероприятие не найдено");
+    const result = await store.transaction(async () => {
+      const found = await store.searchTickets(event_id, query, demo);
+      for (const order of found.orders)
+        order.group = await store.orderWristbands(order.id);
+      return found;
+    });
+    res.json(result);
+  });
+  app.get("/api/wristbands/summary", staff, async (req, res) => {
+    const eventId = z.string().min(1).max(100).parse(req.query.event_id);
+    if (!(await store.event(eventId)))
+      throw new AppError(404, "Мероприятие не найдено");
+    res.json({
+      ...(await store.wristbandSummary(eventId, demo)),
+      updated_at: now(),
+    });
+  });
+  app.post("/api/wristbands/preview", staff, async (req, res) => {
+    const { event_id, code } = checkinInput.parse(req.body);
+    const t = await store.previewWristbands(code, event_id, demo);
+    res.json({ ...checkinResponse(t), code, phone: t.phone });
+  });
+  app.post("/api/wristbands/group", staff, async (req, res) => {
+    const input = checkinInput
+      .extend({
+        quantity: z.number().int().min(1).max(10),
+        expected_checked: z.number().int().min(0).max(10),
+        request_id: z.uuid(),
+      })
+      .parse(req.body);
+    res.json(
+      checkinResponse(
+        await store.issueWristbands(
+          input.code,
+          input.event_id,
+          input.quantity,
+          input.expected_checked,
+          input.request_id,
+          req.staff.role,
+          demo,
+        ),
+      ),
+    );
   });
   app.get("/api/checkin/summary", staff, async (req, res) => {
     const eventId = z.string().max(100).parse(req.query.event_id);

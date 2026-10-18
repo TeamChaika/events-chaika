@@ -55,6 +55,12 @@ export function PriceBreakdown({ quote }: { quote?: PriceQuote }) {
           <strong>−{money(quote.discount_total)}</strong>
         </div>
       )}
+      {quote?.promo && quote.promo.discounted_quantity < quote.quantity && (
+        <p className="small-text muted">
+          Скидка на {quote.promo.discounted_quantity} из {quote.quantity}{" "}
+          билетов. Остальные — по полной цене.
+        </p>
+      )}
     </div>
   );
 }

@@ -83,11 +83,15 @@ type Overview = {
   deliveries: Delivery[];
 };
 export function Admin() {
-  const requestedDoor = location.pathname.startsWith("/checkin");
+  const requestedWristbands = location.pathname.startsWith("/wristbands");
+  const requestedDoor =
+    location.pathname.startsWith("/checkin") || requestedWristbands;
   const [role, setRole] = useState<string | null | undefined>(),
     [demo, setDemo] = useState(false),
     [data, setData] = useState<Overview>(),
-    [tab, setTab] = useState(requestedDoor ? "checkin" : "events"),
+    [tab, setTab] = useState(
+      requestedWristbands ? "wristbands" : requestedDoor ? "checkin" : "events",
+    ),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [edit, setEdit] = useState<EventData | "new" | null>(null),
@@ -117,7 +121,8 @@ export function Admin() {
       .then((a) => {
         setRole(a.role);
         setDemo(a.demo);
-        if (a.role === "door") setTab("checkin");
+        if (a.role === "door")
+          setTab(requestedWristbands ? "wristbands" : "checkin");
         if (a.role) load();
       })
       .catch((e) => setError(e.message));
@@ -161,12 +166,18 @@ export function Admin() {
             {requestedDoor ? "КОМАНДА НА ВХОДЕ" : "ЗА КУЛИСАМИ СОБЫТИЙ"}
           </span>
           <h1>
-            {requestedDoor ? "Проверка билетов" : "Вход для организатора"}
+            {requestedWristbands
+              ? "Выдача браслетов"
+              : requestedDoor
+                ? "Проверка билетов"
+                : "Вход для организатора"}
           </h1>
           <p className="muted">
-            {requestedDoor
-              ? "Впускайте гостей с помощью камеры телефона."
-              : "Всё, чтобы ваша ночь прошла идеально."}
+            {requestedWristbands
+              ? "Отмечайте выданные браслеты отдельно от прохода гостей."
+              : requestedDoor
+                ? "Впускайте гостей с помощью камеры телефона."
+                : "Всё, чтобы ваша ночь прошла идеально."}
           </p>
           <form onSubmit={(e) => login(e, demo)}>
             {!demo && (
@@ -218,9 +229,13 @@ export function Admin() {
                 ["events", "Мероприятия", CalendarDays],
                 ["orders", "Заказы и билеты", Ticket],
                 ["checkin", "Контроль входа", ScanLine],
+                ["wristbands", "Выдача браслетов", Ticket],
                 ["settings", "Подключения", Settings2],
               ]
-            : [["checkin", "Контроль входа", ScanLine]]
+            : [
+                ["checkin", "Контроль входа", ScanLine],
+                ["wristbands", "Выдача браслетов", Ticket],
+              ]
           ).map(([key, title, Icon]) => {
             const I = Icon as typeof CalendarDays;
             return (
@@ -278,7 +293,9 @@ export function Admin() {
                   ? "Билеты"
                   : tab === "checkin"
                     ? "Вход"
-                    : "Сервисы"}
+                    : tab === "wristbands"
+                      ? "Браслеты"
+                      : "Сервисы"}
             </span>
           </span>
           <span className="admin-profile">
@@ -615,17 +632,22 @@ export function Admin() {
                   </div>
                 </>
               )}
-              {tab === "checkin" && (
+              {(tab === "checkin" || tab === "wristbands") && (
                 <>
                   <div className="page-heading">
                     <div>
                       <span className="micro muted">
                         ДОБРО ПОЖАЛОВАТЬ В НОЧЬ
                       </span>
-                      <h1>Контроль входа</h1>
+                      <h1>
+                        {tab === "wristbands"
+                          ? "Выдача браслетов"
+                          : "Контроль входа"}
+                      </h1>
                       <p>
-                        Сканируйте QR или найдите гостя. Для группы выберите
-                        количество.
+                        {tab === "wristbands"
+                          ? "Сканируйте QR билета и укажите количество фактически выданных браслетов. Выдача не отмечает проход."
+                          : "Сканируйте QR или найдите гостя. Для группы выберите количество."}
                       </p>
                     </div>
                     <span className="connection-label">
@@ -633,7 +655,12 @@ export function Admin() {
                       Проверка по серверу
                     </span>
                   </div>
-                  <Checkin events={data.events} onChecked={load} />
+                  <Checkin
+                    key={tab}
+                    wristbands={tab === "wristbands"}
+                    events={data.events}
+                    onChecked={load}
+                  />
                 </>
               )}
               {tab === "settings" && (
@@ -1364,10 +1391,13 @@ type EntrySelection = Omit<EntryResult, "accepted"> & {
 function Checkin({
   events,
   onChecked,
+  wristbands = false,
 }: {
   events: EventData[];
   onChecked: () => void;
+  wristbands?: boolean;
 }) {
+  const endpoint = wristbands ? "/wristbands" : "/checkin";
   const [event, setEvent] = useState(events[0]?.id || ""),
     [summary, setSummary] = useState<{
       issued: number;
@@ -1403,7 +1433,7 @@ function Checkin({
       refreshing = true;
       try {
         const next = await api<NonNullable<typeof summary>>(
-          "/checkin/summary?event_id=" + encodeURIComponent(event),
+          endpoint + "/summary?event_id=" + encodeURIComponent(event),
         );
         if (!cancelled) {
           setSummary(next);
@@ -1428,7 +1458,7 @@ function Checkin({
       window.removeEventListener("offline", markOffline);
       document.removeEventListener("visibilitychange", refresh);
     };
-  }, [event, summaryRevision]);
+  }, [event, summaryRevision, endpoint]);
   useEffect(() => {
     if (!matchMedia("(max-width:800px)").matches) return;
     const target =
@@ -1454,11 +1484,11 @@ function Checkin({
     stop.current();
     setCamera(false);
     try {
-      const preview = await api<EntrySelection>("/checkin/preview", {
+      const preview = await api<EntrySelection>(endpoint + "/preview", {
         method: "POST",
         body: JSON.stringify({ event_id: event, code: value }),
       });
-      if (preview.group.issued > 1 || manual) {
+      if (wristbands || preview.group.issued > 1 || manual) {
         setSelection(preview);
         setQuantity(1);
         groupRequest.current = undefined;
@@ -1498,7 +1528,7 @@ function Checkin({
         checked: selection.group.checked,
       };
     try {
-      const r = await api<EntryResult>("/checkin/group", {
+      const r = await api<EntryResult>(endpoint + "/group", {
         method: "POST",
         body: JSON.stringify({
           event_id: event,
@@ -1582,11 +1612,17 @@ function Checkin({
             ))}
           </select>
         </label>
-        <div className="attendance-summary" aria-label="Статистика входа">
+        <div
+          className="attendance-summary"
+          aria-label={wristbands ? "Статистика браслетов" : "Статистика входа"}
+        >
           {[
             ["Выпущено", summary?.issued],
-            ["Прошли", summary?.checked],
-            ["Ещё не пришли", summary?.remaining],
+            [wristbands ? "Браслетов выдано" : "Прошли", summary?.checked],
+            [
+              wristbands ? "Осталось выдать" : "Ещё не пришли",
+              summary?.remaining,
+            ],
           ].map(([label, count]) => (
             <div key={String(label)}>
               <strong>{count ?? "—"}</strong>
@@ -1596,10 +1632,10 @@ function Checkin({
         </div>
         <p className="small-text muted">
           {summaryStale
-            ? "Нет связи с сервером. Счётчики могут быть устаревшими; проход не подтверждается."
+            ? "Нет связи с сервером. Счётчики могут быть устаревшими; дождитесь подтверждения операции."
             : summary
-              ? `Обновлено ${new Date(summary.updated_at).toLocaleTimeString("ru-RU")}. Учёт первых входов, без выходов.`
-              : "Загружаем статистику входа…"}
+              ? `Обновлено ${new Date(summary.updated_at).toLocaleTimeString("ru-RU")}. ${wristbands ? "Браслеты по действующим заказам. Учёт отдельно от входа." : "Учёт первых входов, без выходов."}`
+              : "Загружаем статистику…"}
         </p>
         <div className="entry-mode" aria-label="Способ поиска билета">
           <button
@@ -1627,6 +1663,7 @@ function Checkin({
         </div>
         {entryMode === "search" ? (
           <GuestSearch
+            wristbands={wristbands}
             key={event}
             eventId={event}
             revision={summaryRevision}
@@ -1708,13 +1745,16 @@ function Checkin({
             <h2>{selection.name}</h2>
             <p>{selection.phone}</p>
             <p>
-              Вошли {selection.group.checked} из {selection.group.issued}.
-              Осталось {selection.group.remaining}.
+              {wristbands ? "Браслетов выдано" : "Вошли"}{" "}
+              {selection.group.checked} из {selection.group.issued}. Осталось{" "}
+              {selection.group.remaining}.
             </p>
             {selection.group.remaining > 0 ? (
               <>
                 <label htmlFor="entry-quantity">
-                  Сколько гостей заходит сейчас?
+                  {wristbands
+                    ? "Сколько браслетов выдаёте сейчас?"
+                    : "Сколько гостей заходит сейчас?"}
                 </label>
                 <select
                   id="entry-quantity"
@@ -1739,12 +1779,16 @@ function Checkin({
                     void admitGroup();
                   }}
                 >
-                  {busy ? <Spinner /> : <Check size={18} />}Подтвердить проход ·{" "}
-                  {quantity}
+                  {busy ? <Spinner /> : <Check size={18} />}
+                  {wristbands
+                    ? "Подтвердить выдачу"
+                    : "Подтвердить проход"} · {quantity}
                 </button>
               </>
             ) : (
-              <h3>Все гости уже прошли</h3>
+              <h3>
+                {wristbands ? "Все браслеты выданы" : "Все гости уже прошли"}
+              </h3>
             )}
             <ErrorNotice text={error} />
             <button
@@ -1778,25 +1822,43 @@ function Checkin({
             <span className="micro">
               {result.mode !== "live" ? "ТЕСТОВЫЙ БИЛЕТ" : "РЕЗУЛЬТАТ ПРОВЕРКИ"}
             </span>
-            <h2>{result.accepted ? "Добро пожаловать!" : "Уже использован"}</h2>
+            <h2>
+              {result.accepted
+                ? wristbands
+                  ? "Выдача сохранена"
+                  : "Добро пожаловать!"
+                : "Уже использован"}
+            </h2>
             <h3>{result.name}</h3>
             <p>
               {result.admitted
-                ? `Отмечен проход: ${result.admitted}. Билеты № ${result.ordinals?.join(", ")}`
+                ? wristbands
+                  ? `Выдано браслетов: ${result.admitted}. Проход не отмечен.`
+                  : `Отмечен проход: ${result.admitted}. Билеты № ${result.ordinals?.join(", ")}`
                 : `Билет № ${result.ordinal}`}
             </p>
             {result.replayed && (
-              <p>Этот проход уже был сохранён. Повторно гости не добавлены.</p>
+              <p>
+                {wristbands
+                  ? "Эта выдача уже сохранена. Повторно браслеты не добавлены."
+                  : "Этот проход уже был сохранён. Повторно гости не добавлены."}
+              </p>
             )}
             {result.group && (
               <p>
-                По заказу вошли {result.group.checked} из {result.group.issued}.
-                Ещё не пришли: {result.group.remaining}.
+                {wristbands ? "По заказу выдано браслетов" : "По заказу вошли"}{" "}
+                {result.group.checked} из {result.group.issued}.
+                {wristbands ? " Осталось выдать" : " Ещё не пришли"}:{" "}
+                {result.group.remaining}.
               </p>
             )}
             <p>
-              {result.accepted ? "Проход подтверждён" : "Первый проход"} в{" "}
-              {new Date(result.used_at).toLocaleTimeString("ru-RU")}
+              {wristbands
+                ? "Выдача подтверждена"
+                : result.accepted
+                  ? "Проход подтверждён"
+                  : "Первый проход"}{" "}
+              в {new Date(result.used_at).toLocaleTimeString("ru-RU")}
             </p>
             <button
               className="button secondary full"
@@ -1819,8 +1881,10 @@ function Checkin({
             <h3>{busy ? "Проверяем билет…" : "Готовы встречать гостей"}</h3>
             <p>
               {busy
-                ? "Ожидаем подтверждение сервера. Пока не пропускайте гостя."
-                : "Здесь появится результат проверки: имя гостя и разрешение на проход."}
+                ? "Ожидаем подтверждение сервера. Не повторяйте операцию до получения результата."
+                : wristbands
+                  ? "Здесь появится имя гостя и количество браслетов, которые ещё можно выдать."
+                  : "Здесь появится результат проверки: имя гостя и разрешение на проход."}
             </p>
             <div className="scan-legend">
               <span>
@@ -1835,8 +1899,9 @@ function Checkin({
           </div>
         )}
         <p className="small-text muted scan-tip">
-          Для проверки нужен интернет. Телефон не сохраняет решения офлайн — это
-          защищает от повторного прохода через разные входы.
+          {wristbands
+            ? "Для выдачи нужен интернет. Подтверждайте только фактически переданные браслеты. Повторный QR покажет оставшееся количество."
+            : "Для проверки нужен интернет. Телефон не сохраняет решения офлайн — это защищает от повторного прохода через разные входы."}
         </p>
       </div>
     </div>

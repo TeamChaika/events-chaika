@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac, randomUUID } from "node:crypto";
+import pg from "pg";
 import { createApp } from "../server/index.mjs";
 import { currentLegalDocuments } from "../server/legal.mjs";
 import {
@@ -36,9 +37,24 @@ const attribution = (first, last = first) => ({
 async function harness(t, options = {}) {
   process.env.TELEGRAM_BOT_TOKEN = botToken;
   process.env.TELEGRAM_MINIAPP_OWNER_ID = "10001";
+  let databaseUrl, cleanupDatabase;
+  if (process.env.TEST_DATABASE_URL) {
+    const url = new URL(process.env.TEST_DATABASE_URL);
+    if (!["127.0.0.1", "localhost"].includes(url.hostname))
+      throw new Error("Tests require a local PostgreSQL instance");
+    const pool = new pg.Pool({ connectionString: url.toString() });
+    const schema = "test_" + randomUUID().replaceAll("-", "");
+    await pool.query(`CREATE SCHEMA ${schema}`);
+    url.searchParams.set("options", `-csearch_path=${schema}`);
+    databaseUrl = url.toString();
+    cleanupDatabase = async () => {
+      await pool.query(`DROP SCHEMA ${schema} CASCADE`);
+      await pool.end();
+    };
+  }
   const h = await createApp({
     dbPath: ":memory:",
-    databaseUrl: undefined,
+    databaseUrl,
     origin: "http://localhost:5173",
     demo: true,
     testing: true,
@@ -55,6 +71,7 @@ async function harness(t, options = {}) {
   t.after(async () => {
     await new Promise((r) => server.close(r));
     await h.close();
+    await cleanupDatabase?.();
   });
   const base = `http://127.0.0.1:${server.address().port}`;
   let cookie = "",
@@ -225,6 +242,122 @@ test("only approved Telegram users see aggregate data; roles and immediate revoc
   );
   h.setBearer(editorToken);
   assert.equal((await h.request("/team/stats")).status, 401);
+});
+
+test("team promo creation respects roles, validates rules and never rewrites ticket prices", async (t) => {
+  const h = await harness(t);
+  const path = "/team/events/red-moon/promos";
+  const promo = {
+    code: "save500",
+    kind: "fixed",
+    value: 50000,
+    active: true,
+    limit_scope: "tickets",
+    max_uses: 3,
+    starts_at: "2026-10-01T00:00:00+03:00",
+    ends_at: "2099-10-30T00:00:00+03:00",
+  };
+  assert.equal((await h.request(path)).status, 401);
+  assert.equal((await h.request(path, "POST", promo)).status, 401);
+  const owner = (await h.login()).body;
+  const user = { id: 20003, first_name: "Редактор" };
+  await h.login(user);
+  h.setBearer(owner.token);
+  await h.request("/team/members/20003", "PATCH", {
+    role: "viewer",
+    status: "active",
+  });
+  await h.login(user);
+  assert.equal((await h.request(path)).status, 200);
+  assert.equal((await h.request(path, "POST", promo)).status, 403);
+  h.setBearer(owner.token);
+  await h.request("/team/members/20003", "PATCH", {
+    role: "editor",
+    status: "active",
+  });
+  await h.login(user);
+  const before = await h.store.pricingOverview("red-moon");
+  for (const patch of [
+    { value: -1 },
+    { kind: "percent", value: 10000 },
+    { max_uses: 0 },
+    { ends_at: promo.starts_at },
+  ])
+    assert.equal(
+      (await h.request(path, "POST", { ...promo, ...patch })).status,
+      400,
+    );
+  assert.equal(
+    (await h.request("/team/events/missing/promos", "POST", promo)).status,
+    404,
+  );
+  const results = await Promise.all([
+    h.request(path, "POST", promo),
+    h.request(path, "POST", promo),
+  ]);
+  assert.deepEqual(results.map((r) => r.status).sort(), [201, 409]);
+  const after = await h.store.pricingOverview("red-moon");
+  assert.deepEqual(after.tiers, before.tiers);
+  assert.deepEqual(after.schedule, before.schedule);
+  assert.equal(after.capacity, before.capacity);
+  assert.notEqual(after.revision, before.revision);
+  assert.equal(after.promos[0].code, "SAVE500");
+  assert.equal(after.promos[0].starts_at, "2026-09-30T21:00:00.000Z");
+  const quote = await h.store.quote("red-moon", 5, "SAVE500");
+  assert.equal(quote.promo.discounted_quantity, 3);
+  assert.equal(quote.discount_total, 150000);
+  const percent = {
+    code: "PERCENT",
+    kind: "percent",
+    value: 1500,
+    active: true,
+    limit_scope: "orders",
+    max_uses: 1,
+  };
+  assert.equal((await h.request(path, "POST", percent)).status, 201);
+  const list = (await h.request(path)).body;
+  assert.equal(list.promos.length, 2);
+  assert.deepEqual(list.usage, {});
+  const audit = await h.store.get(
+    "SELECT actor FROM audit WHERE action LIKE '%promo_created%' ORDER BY created_at DESC LIMIT 1",
+  );
+  assert.equal(audit.actor, "20003");
+});
+
+test("team wristband totals are event-wide, independent of entry and contain no guest data", async (t) => {
+  const h = await harness(t);
+  await h.login();
+  const order = (await h.order()).body;
+  await h.store.markPaid(order.id);
+  await h.store.run("UPDATE orders SET mode='live' WHERE id=?", order.id);
+  const ticket = await h.store.get(
+    "SELECT code FROM tickets WHERE order_id=? LIMIT 1",
+    order.id,
+  );
+  await h.store.issueWristbands(
+    ticket.code,
+    "red-moon",
+    1,
+    0,
+    randomUUID(),
+    "test",
+  );
+  const report = (
+    await h.request("/team/stats?event_id=red-moon&from=2099-01-01")
+  ).body;
+  assert.equal(report.totals.tickets, 0);
+  assert.deepEqual(report.wristbands, { issued: 2, checked: 1, remaining: 1 });
+  assert.equal((await h.store.attendance("red-moon")).checked, 0);
+  assert.equal(JSON.stringify(report).includes("79990000000"), false);
+  await h.store.run(
+    "UPDATE orders SET voided_at=? WHERE id=?",
+    new Date().toISOString(),
+    order.id,
+  );
+  assert.deepEqual(
+    (await h.request("/team/stats?event_id=red-moon")).body.wristbands,
+    { issued: 0, checked: 0, remaining: 0 },
+  );
 });
 
 test("source links belong to an event, are reusable, and invalid/colliding paths are rejected", async (t) => {

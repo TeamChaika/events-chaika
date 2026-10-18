@@ -15,8 +15,11 @@ import {
   Check,
   ArrowUpRight,
   CircleHelp,
+  Tag,
 } from "lucide-react";
 import { money } from "./types";
+import { teamRequest } from "./team-api";
+import { TeamPromos } from "./TeamPromos";
 import "./team.css";
 
 type Member = {
@@ -57,6 +60,7 @@ type Catalog = {
 type Counts = { orders: number; tickets: number; revenue: number };
 type Report = {
   totals: Counts;
+  wristbands: { issued: number; checked: number; remaining: number } | null;
   rows: (Counts & {
     source_link_id: string | null;
     source_name: string | null;
@@ -85,7 +89,7 @@ function telegramApp() {
   if (!sdkPromise)
     sdkPromise = new Promise((resolve, reject) => {
       const script = document.createElement("script");
-      script.src = "https://telegram.org/js/telegram-web-app.js";
+      script.src = "/vendor/telegram-web-app-20261018.js";
       script.async = true;
       const timeout = setTimeout(() => {
         script.remove();
@@ -95,10 +99,19 @@ function telegramApp() {
             "Telegram не загрузился. Проверьте соединение и повторите.",
           ),
         );
-      }, 12000);
+      }, 35000);
       script.onload = () => {
         clearTimeout(timeout);
-        resolve(window.Telegram?.WebApp);
+        if (window.Telegram?.WebApp) resolve(window.Telegram.WebApp);
+        else {
+          script.remove();
+          sdkPromise = undefined;
+          reject(
+            new Error(
+              "Не удалось загрузить модуль Telegram. Повторите попытку.",
+            ),
+          );
+        }
       };
       script.onerror = () => {
         clearTimeout(timeout);
@@ -134,18 +147,12 @@ export function Team() {
   const reportRequest = useRef(0);
   const call = useCallback(
     async <T,>(path: string, method = "GET", body?: unknown): Promise<T> => {
-      const response = await fetch("/api/team" + path, {
+      const { response, data } = await teamRequest(
+        "/team" + path,
         method,
-        headers: {
-          "Content-Type": "application/json",
-          ...(session.current
-            ? { Authorization: "Bearer " + session.current }
-            : {}),
-        },
-        body: body === undefined ? undefined : JSON.stringify(body),
-        signal: AbortSignal.timeout(15000),
-      });
-      const data = await response.json();
+        body,
+        session.current,
+      );
       if (!response.ok) {
         if (path === "/auth" && data.member) setPending(data.member);
         if (response.status === 401 && path !== "/auth") {
@@ -164,24 +171,24 @@ export function Team() {
     try {
       // Browser administrators reuse their existing staff session. Telegram
       // sessions stay only in memory, so embedded browsers need no third-party cookies.
-      const auth = await fetch("/api/auth", {
-        signal: AbortSignal.timeout(12000),
-      }).then((r) => r.json());
-      if (auth.role === "admin") setMember(await call<Member>("/me"));
-      else {
-        const app = await telegramApp();
-        app?.ready();
-        app?.expand();
-        try {
-          app?.setHeaderColor("#101113");
-          app?.setBackgroundColor("#101113");
-        } catch {
-          /* Older Telegram clients use their default colors. */
-        }
-        if (!app?.initData)
+      const app = await telegramApp();
+      app?.ready();
+      app?.expand();
+      try {
+        app?.setHeaderColor("#101113");
+        app?.setBackgroundColor("#101113");
+      } catch {
+        /* Older Telegram clients use their default colors. */
+      }
+      if (!app?.initData) {
+        // Only ordinary browser entry needs a staff-session check.
+        const { data: auth } = await teamRequest("/auth");
+        if (auth.role !== "admin")
           throw new Error(
             "Откройте «Билеты и источники» в Telegram-боте @GastroDvor_bot.",
           );
+        setMember(await call<Member>("/me"));
+      } else {
         const result = await call<{ token: string; member: Member }>(
           "/auth",
           "POST",
@@ -382,6 +389,7 @@ export function Team() {
         {[
           ["stats", "Продажи", BarChart3],
           ["links", "Источники", Link2],
+          ["promos", "Промокоды", Tag],
           ...(member.role === "owner" ? [["members", "Доступ", Users]] : []),
         ].map(([id, name, Icon]) => {
           const I = Icon as typeof Users;
@@ -403,6 +411,18 @@ export function Team() {
       {error && (
         <div className="team-error" role="alert">
           {error}
+          {!catalog && (
+            <button
+              className="team-text-link"
+              onClick={() =>
+                void loadCatalog()
+                  .then(() => setError(""))
+                  .catch((e: Error) => setError(e.message))
+              }
+            >
+              Повторить загрузку
+            </button>
+          )}
         </div>
       )}
       {!catalog && <p role="status">Загружаем мероприятия…</p>}
@@ -450,6 +470,23 @@ export function Team() {
               </strong>
             </div>
           </div>
+          <div className="team-section-title">
+            <h2>Выдача браслетов</h2>
+          </div>
+          <div className="team-metrics" aria-label="Статистика браслетов">
+            <div className="team-metric">
+              <span>Браслетов выдано</span>
+              <strong>{report?.wristbands?.checked ?? "—"}</strong>
+            </div>
+            <div className="team-metric">
+              <span>Осталось выдать</span>
+              <strong>{report?.wristbands?.remaining ?? "—"}</strong>
+            </div>
+          </div>
+          <p className="team-note">
+            За всё мероприятие, включая пригласительные. Учёт отдельно от
+            прохода гостей; фильтр дат продаж на браслеты не влияет.
+          </p>
           <div className="team-section-title">
             <h2>Откуда приходят покупки</h2>
             <span>{report?.rows.length || 0}</span>
@@ -506,6 +543,14 @@ export function Team() {
               : "Загружаем статистику…"}
           </p>
         </section>
+      )}
+      {tab === "promos" && eventId && (
+        <TeamPromos
+          key={eventId}
+          eventId={eventId}
+          canEdit={canEdit}
+          call={call}
+        />
       )}
       {tab === "links" && (
         <section aria-label="Источники и ссылки">

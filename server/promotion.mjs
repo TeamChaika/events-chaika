@@ -7,6 +7,7 @@ import {
 import { z } from "zod";
 import { AppError, token } from "./store.mjs";
 import { telegram } from "./telegram.mjs";
+import { promoCodesSchema, readPromos } from "./pricing.mjs";
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 export const ATTRIBUTION_CONSENT_VERSION = "2026-09-29.1";
@@ -25,6 +26,7 @@ const reserved = new Set([
   "team",
   "admin",
   "checkin",
+  "wristbands",
   "ticket",
   "order",
   "legal",
@@ -312,6 +314,10 @@ export function promotionService(store, origin) {
             { orders: 0, tickets: 0, revenue: 0 },
           ),
           updated_at: new Date().toISOString(),
+          // Handouts cover the entire event, independently of the sales date filter.
+          wristbands: input.event_id
+            ? await store.wristbandSummary(input.event_id)
+            : null,
         };
       });
     },
@@ -518,6 +524,46 @@ export function registerTeamRoutes(
   app.get("/api/team/stats", async (req, res) =>
     res.json(await promotion.overview(req.query)),
   );
+  app.get("/api/team/events/:id/promos", async (req, res) => {
+    const event = await store.get(
+      "SELECT promo_codes FROM events WHERE id=?",
+      req.params.id,
+    );
+    if (!event) throw new AppError(404, "Мероприятие не найдено");
+    res.json({
+      promos: readPromos(event.promo_codes),
+      usage: await store.promoUsage(req.params.id),
+    });
+  });
+  app.post("/api/team/events/:id/promos", async (req, res) => {
+    editor(req);
+    const promo = promoCodesSchema.parse([req.body])[0];
+    await store.transaction(async () => {
+      const event = await store.get(
+        "SELECT promo_codes FROM events WHERE id=?",
+        req.params.id,
+      );
+      if (!event) throw new AppError(404, "Мероприятие не найдено");
+      const existing = readPromos(event.promo_codes);
+      if (existing.some((row) => row.code === promo.code))
+        throw new AppError(
+          409,
+          "Такой промокод уже существует. Обновите список.",
+        );
+      const promos = promoCodesSchema.parse([...existing, promo]);
+      await store.run(
+        "UPDATE events SET promo_codes=? WHERE id=?",
+        JSON.stringify(promos),
+        req.params.id,
+      );
+      await store.audit(
+        JSON.stringify({ action: "promo_created", promo }),
+        req.params.id,
+        req.team.telegram_id,
+      );
+    });
+    res.status(201).json(promo);
+  });
   app.post("/api/team/links", async (req, res) => {
     editor(req);
     res

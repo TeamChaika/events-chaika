@@ -1078,7 +1078,9 @@ export default function App() {
     <LegalPage />
   ) : path.startsWith("/unsubscribe/") ? (
     <UnsubscribePage />
-  ) : path.startsWith("/admin") || path.startsWith("/checkin") ? (
+  ) : path.startsWith("/admin") ||
+    path.startsWith("/checkin") ||
+    path.startsWith("/wristbands") ? (
     <Admin />
   ) : path.startsWith("/order/") ? (
     <OrderPage />

@@ -8,6 +8,10 @@ import {
   moscowInput,
   type ScheduleDraft,
   type PromoDraft,
+  type PromoRule,
+  type PromoUsage,
+  promoDraft,
+  promoRule,
 } from "./AdminPriceRules";
 
 type PricingSettings = {
@@ -16,12 +20,8 @@ type PricingSettings = {
   occupied: number;
   tiers: { quantity: number; price: number; paid: number; reserved: number }[];
   schedule: { starts_at: string; price: number }[];
-  promos: {
-    code: string;
-    kind: "fixed" | "percent";
-    value: number;
-    active: boolean;
-  }[];
+  promos: PromoRule[];
+  promo_usage: PromoUsage;
 };
 type DraftTier = { quantity: string; price: string };
 
@@ -61,12 +61,7 @@ export function AdminPricing({
             price: String(row.price / 100),
           })),
         );
-        setPromos(
-          result.promos.map((row) => ({
-            ...row,
-            value: String(row.value / 100),
-          })),
-        );
+        setPromos(result.promos.map(promoDraft));
         setDraft(
           result.tiers.map((tier) => ({
             quantity: String(tier.quantity),
@@ -102,12 +97,7 @@ export function AdminPricing({
           })),
         ) ||
       JSON.stringify(promos) !==
-        JSON.stringify(
-          settings.promos.map((row) => ({
-            ...row,
-            value: String(row.value / 100),
-          })),
-        ));
+        JSON.stringify(settings.promos.map(promoDraft)));
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!settings || busy || loading || mustReload) return;
@@ -141,11 +131,7 @@ export function AdminPricing({
             starts_at: new Date(`${row.starts_at}:00+03:00`).toISOString(),
             price: Math.round(Number(row.price) * 100),
           })),
-          promos: promos.map((row) => ({
-            ...row,
-            code: row.code.trim().toUpperCase(),
-            value: Math.round(Number(row.value) * 100),
-          })),
+          promos: promos.map(promoRule),
         }),
       });
       saved();
@@ -268,6 +254,7 @@ export function AdminPricing({
                 setSchedule={setSchedule}
                 promos={promos}
                 setPromos={setPromos}
+                usage={settings.promo_usage}
               />
             </fieldset>
             <ErrorNotice text={error} />

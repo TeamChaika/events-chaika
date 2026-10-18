@@ -17,11 +17,13 @@ export function GuestSearch({
   revision,
   busy,
   onSelect,
+  wristbands = false,
 }: {
   eventId: string;
   revision: number;
   busy: boolean;
   onSelect: (code: string) => void;
+  wristbands?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [submitted, setSubmitted] = useState<{ query: string }>();
@@ -35,11 +37,14 @@ export function GuestSearch({
     activeRequest.current = controller;
     setLoading(true);
     setError("");
-    void api<NonNullable<typeof data>>("/checkin/search", {
-      method: "POST",
-      body: JSON.stringify({ event_id: eventId, query: submitted.query }),
-      signal: controller.signal,
-    })
+    void api<NonNullable<typeof data>>(
+      wristbands ? "/wristbands/search" : "/checkin/search",
+      {
+        method: "POST",
+        body: JSON.stringify({ event_id: eventId, query: submitted.query }),
+        signal: controller.signal,
+      },
+    )
       .then((next) => {
         if (!controller.signal.aborted) setData(next);
       })
@@ -53,7 +58,7 @@ export function GuestSearch({
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [submitted, eventId, revision]);
+  }, [submitted, eventId, revision, wristbands]);
   return (
     <div className="guest-search">
       <form
@@ -119,20 +124,23 @@ export function GuestSearch({
                   {order.phone} · Заказ {order.id.slice(0, 8)}
                 </p>
                 <p>
-                  Вошли {order.group.checked} из {order.group.issued} · Осталось{" "}
+                  {wristbands ? "Браслетов выдано" : "Вошли"}{" "}
+                  {order.group.checked} из {order.group.issued} · Осталось{" "}
                   {order.group.remaining}
                 </p>
-                <div className="guest-ticket-statuses">
-                  {order.tickets.map((ticket) => (
-                    <span
-                      key={ticket.code}
-                      className={ticket.used_at ? "used" : "unused"}
-                    >
-                      № {ticket.ordinal} ·{" "}
-                      {ticket.used_at ? "вошёл" : "ожидаем"}
-                    </span>
-                  ))}
-                </div>
+                {!wristbands && (
+                  <div className="guest-ticket-statuses">
+                    {order.tickets.map((ticket) => (
+                      <span
+                        key={ticket.code}
+                        className={ticket.used_at ? "used" : "unused"}
+                      >
+                        № {ticket.ordinal} ·{" "}
+                        {ticket.used_at ? "вошёл" : "ожидаем"}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <button
                   type="button"
                   className="button secondary full"
@@ -140,8 +148,12 @@ export function GuestSearch({
                   onClick={() => onSelect(order.tickets[0].code)}
                 >
                   {order.group.remaining
-                    ? "Выбрать количество гостей"
-                    : "Все гости уже прошли"}
+                    ? wristbands
+                      ? "Выбрать количество браслетов"
+                      : "Выбрать количество гостей"
+                    : wristbands
+                      ? "Все браслеты выданы"
+                      : "Все гости уже прошли"}
                 </button>
               </article>
             ))}
