@@ -7,7 +7,7 @@ import {
 import { z } from "zod";
 import { AppError, token } from "./store.mjs";
 import { telegram } from "./telegram.mjs";
-import { promoCodesSchema, readPromos } from "./pricing.mjs";
+import { promoCodeSchema, promoCodesSchema, readPromos } from "./pricing.mjs";
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 export const ATTRIBUTION_CONSENT_VERSION = "2026-09-29.1";
@@ -512,6 +512,77 @@ export function registerTeamRoutes(
     if (req.team.role !== "owner")
       throw new AppError(403, "Доступно только владельцу");
   };
+  const promoAuthors = async (eventId) => {
+    const history = await store.all(
+      `SELECT a.action,a.actor,a.created_at,m.display_name FROM audit a
+       LEFT JOIN team_members m ON m.telegram_id=a.actor
+       WHERE a.entity=? ORDER BY a.created_at,a.id`,
+      eventId,
+    );
+    const authors = new Map();
+    const firstSeen = new Map();
+    const remember = (code, author, at) => {
+      if (!code) return;
+      if (!authors.has(code)) {
+        authors.set(code, author);
+        firstSeen.set(code, at);
+      } else if (
+        firstSeen.get(code) === at &&
+        authors.get(code)?.created_by !== author?.created_by
+      ) {
+        // Millisecond ties cannot establish ownership; only the owner may manage them.
+        authors.set(code, null);
+      }
+    };
+    for (const row of history) {
+      let entry;
+      try {
+        entry = JSON.parse(row.action);
+      } catch {
+        continue; // Older audit entries are plain action names.
+      }
+      let added = [];
+      if (entry?.action === "promo_created") added = [entry.promo];
+      else if (
+        entry?.action === "pricing_update" &&
+        Array.isArray(entry.promos_before) &&
+        Array.isArray(entry.promos_after)
+      ) {
+        // Preserve unknown legacy authors too: re-adding a code must not transfer ownership.
+        for (const promo of entry.promos_before)
+          remember(promo?.code, null, row.created_at);
+        const before = new Set(entry.promos_before.map((promo) => promo?.code));
+        added = entry.promos_after.filter((promo) => !before.has(promo?.code));
+      }
+      for (const promo of added)
+        remember(
+          promo?.code,
+          {
+            created_by: row.actor,
+            creator_name:
+              row.actor === "admin"
+                ? "Администратор сайта"
+                : row.display_name ||
+                  (row.actor === "system"
+                    ? "Система"
+                    : `Telegram ID ${row.actor}`),
+            created_at: row.created_at,
+          },
+          row.created_at,
+        );
+    }
+    return authors;
+  };
+  const canManagePromo = (member, author) =>
+    member.role === "owner" ||
+    (member.role === "editor" && author?.created_by === member.telegram_id);
+  const teamPromo = (promo, author, member) => ({
+    ...promo,
+    created_by: author?.created_by ?? null,
+    creator_name: author?.creator_name ?? null,
+    created_at: author?.created_at ?? null,
+    can_deactivate: promo.active && canManagePromo(member, author),
+  });
   app.get("/api/team/me", (req, res) =>
     res.json({
       ...req.team,
@@ -530,15 +601,18 @@ export function registerTeamRoutes(
       req.params.id,
     );
     if (!event) throw new AppError(404, "Мероприятие не найдено");
+    const authors = await promoAuthors(req.params.id);
     res.json({
-      promos: readPromos(event.promo_codes),
+      promos: readPromos(event.promo_codes).map((promo) =>
+        teamPromo(promo, authors.get(promo.code), req.team),
+      ),
       usage: await store.promoUsage(req.params.id),
     });
   });
   app.post("/api/team/events/:id/promos", async (req, res) => {
     editor(req);
     const promo = promoCodesSchema.parse([req.body])[0];
-    await store.transaction(async () => {
+    const saved = await store.transaction(async () => {
       const event = await store.get(
         "SELECT promo_codes FROM events WHERE id=?",
         req.params.id,
@@ -561,8 +635,45 @@ export function registerTeamRoutes(
         req.params.id,
         req.team.telegram_id,
       );
+      const authors = await promoAuthors(req.params.id);
+      return teamPromo(promo, authors.get(promo.code), req.team);
     });
-    res.status(201).json(promo);
+    res.status(201).json(saved);
+  });
+  app.patch("/api/team/events/:id/promos/:code", async (req, res) => {
+    editor(req);
+    z.object({ active: z.literal(false) })
+      .strict()
+      .parse(req.body);
+    const code = promoCodeSchema.parse(req.params.code);
+    const saved = await store.transaction(async () => {
+      const event = await store.get(
+        "SELECT promo_codes FROM events WHERE id=?",
+        req.params.id,
+      );
+      if (!event) throw new AppError(404, "Мероприятие не найдено");
+      const promos = readPromos(event.promo_codes);
+      const promo = promos.find((row) => row.code === code);
+      if (!promo) throw new AppError(404, "Промокод не найден");
+      const author = (await promoAuthors(req.params.id)).get(code);
+      if (!canManagePromo(req.team, author))
+        throw new AppError(403, "Можно отключать только свои промокоды");
+      if (promo.active) {
+        promo.active = false;
+        await store.run(
+          "UPDATE events SET promo_codes=? WHERE id=?",
+          JSON.stringify(promos),
+          req.params.id,
+        );
+        await store.audit(
+          JSON.stringify({ action: "promo_deactivated", code }),
+          req.params.id,
+          req.team.telegram_id,
+        );
+      }
+      return teamPromo(promo, author, req.team);
+    });
+    res.json(saved);
   });
   app.post("/api/team/links", async (req, res) => {
     editor(req);

@@ -109,7 +109,12 @@ async function harness(t, options = {}) {
       .filter((doc) => ["terms", "consent"].includes(doc.slug))
       .map((doc) => [doc.slug, { accepted: true, hash: doc.hash }]),
   );
-  const order = (source, key = randomUUID(), event_id = "red-moon") =>
+  const order = async (
+    source,
+    key = randomUUID(),
+    event_id = "red-moon",
+    promo_code,
+  ) =>
     request(
       "/orders",
       "POST",
@@ -120,6 +125,13 @@ async function harness(t, options = {}) {
         phone: "+79990000000",
         quantity: 2,
         event_id,
+        ...(promo_code
+          ? {
+              promo_code,
+              expected_total: (await h.store.quote(event_id, 2, promo_code))
+                .total,
+            }
+          : {}),
         acceptances,
         ...(source ? { attribution: source } : {}),
       },
@@ -317,11 +329,207 @@ test("team promo creation respects roles, validates rules and never rewrites tic
   assert.equal((await h.request(path, "POST", percent)).status, 201);
   const list = (await h.request(path)).body;
   assert.equal(list.promos.length, 2);
+  assert.equal(list.promos[0].created_by, "20003");
+  assert.equal(list.promos[0].creator_name, "Редактор");
+  assert.equal(list.promos[0].can_deactivate, true);
+  assert.ok(Date.parse(list.promos[0].created_at));
   assert.deepEqual(list.usage, {});
   const audit = await h.store.get(
     "SELECT actor FROM audit WHERE action LIKE '%promo_created%' ORDER BY created_at DESC LIMIT 1",
   );
   assert.equal(audit.actor, "20003");
+});
+
+test("promo authors survive admin edits and only creators or owners can deactivate", async (t) => {
+  const h = await harness(t);
+  const path = "/team/events/red-moon/promos";
+  const rule = { code: "OWNER", kind: "fixed", value: 50000, active: true };
+  const owner = (await h.login()).body;
+  const created = await h.request(path, "POST", {
+    ...rule,
+    created_by: "20004",
+  });
+  assert.equal(created.status, 201);
+  assert.equal(created.body.created_by, "10001");
+  const user = { id: 20004, first_name: "Анна", last_name: "СММ" };
+  await h.login(user);
+  h.setBearer(owner.token);
+  await h.request("/team/members/20004", "PATCH", {
+    role: "editor",
+    status: "active",
+  });
+  await h.login(user);
+  assert.equal(
+    (await h.request(path, "POST", { ...rule, code: "EDITOR" })).status,
+    201,
+  );
+  let list = (await h.request(path)).body.promos;
+  assert.equal(list.find((p) => p.code === "OWNER").can_deactivate, false);
+  assert.equal(list.find((p) => p.code === "EDITOR").creator_name, "Анна СММ");
+  assert.equal(
+    (await h.request(path + "/OWNER", "PATCH", { active: false })).status,
+    403,
+  );
+  assert.equal(
+    (await h.request(path + "/EDITOR", "PATCH", { active: true })).status,
+    400,
+  );
+  assert.equal(
+    (await h.request(path + "/EDITOR", "PATCH", { active: false, value: 1 }))
+      .status,
+    400,
+  );
+  assert.equal(
+    (await h.request(path + "/MISSING", "PATCH", { active: false })).status,
+    404,
+  );
+  assert.equal(
+    (
+      await h.request("/team/events/missing/promos/EDITOR", "PATCH", {
+        active: false,
+      })
+    ).status,
+    404,
+  );
+
+  const before = await h.store.pricingOverview("red-moon");
+  const pricingInput = {
+    revision: before.revision,
+    tiers: before.tiers.map(({ quantity, price }) => ({ quantity, price })),
+    promos: [
+      ...before.promos.map((p) => ({ ...p, value: 40000 })),
+      { ...before.promos[0], code: "ADMIN" },
+    ],
+  };
+  await h.store.updatePricing("red-moon", pricingInput, "admin");
+  list = (await h.request(path)).body.promos;
+  assert.equal(list.find((p) => p.code === "EDITOR").created_by, "20004");
+  assert.equal(
+    list.find((p) => p.code === "ADMIN").creator_name,
+    "Администратор сайта",
+  );
+  assert.equal(list.find((p) => p.code === "ADMIN").can_deactivate, false);
+  const pending = await h.order(undefined, randomUUID(), "red-moon", "EDITOR");
+  assert.equal(pending.status, 201);
+  const frozen = await h.store.get(
+    "SELECT total,discount_snapshot FROM orders WHERE id=?",
+    pending.body.id,
+  );
+  const usage = await h.store.promoUsage("red-moon");
+  assert.equal(usage.EDITOR.held_orders, 1);
+  const unchanged = await h.store.pricingOverview("red-moon");
+  const results = await Promise.all([
+    h.request(path + "/editor", "PATCH", { active: false }),
+    h.request(path + "/EDITOR", "PATCH", { active: false }),
+    h.request(path, "POST", { ...rule, code: "PARALLEL" }),
+  ]);
+  assert.deepEqual(
+    results.map((r) => r.status),
+    [200, 200, 201],
+  );
+  assert.equal(results[0].body.active, false);
+  assert.equal(results[0].body.can_deactivate, false);
+  assert.equal(results[0].body.created_by, "20004");
+  await assert.rejects(h.store.quote("red-moon", 1, "EDITOR"), { status: 400 });
+  const after = await h.store.pricingOverview("red-moon");
+  assert.deepEqual(after.tiers, unchanged.tiers);
+  assert.deepEqual(after.schedule, unchanged.schedule);
+  assert.equal(after.capacity, unchanged.capacity);
+  assert.equal(after.promos.length, 4);
+  assert.deepEqual(await h.store.promoUsage("red-moon"), usage);
+  await h.store.markPaid(pending.body.id);
+  assert.deepEqual(
+    await h.store.get(
+      "SELECT total,discount_snapshot FROM orders WHERE id=?",
+      pending.body.id,
+    ),
+    frozen,
+  );
+  assert.equal((await h.store.promoUsage("red-moon")).EDITOR.paid_orders, 1);
+  await assert.rejects(
+    h.store.updatePricing(
+      "red-moon",
+      { ...pricingInput, revision: unchanged.revision },
+      "admin",
+    ),
+    { status: 409 },
+  );
+  const audit = await h.store.all(
+    "SELECT action,actor FROM audit WHERE entity=?",
+    "red-moon",
+  );
+  const paused = audit
+    .map((r) => {
+      try {
+        return { ...JSON.parse(r.action), actor: r.actor };
+      } catch {
+        return {};
+      }
+    })
+    .filter((r) => r.action === "promo_deactivated");
+  assert.equal(paused.length, 1);
+  assert.equal(paused[0].actor, "20004");
+
+  h.setBearer(owner.token);
+  assert.equal(
+    (await h.request(path + "/PARALLEL", "PATCH", { active: false })).status,
+    200,
+  );
+  await h.request("/team/members/20004", "PATCH", {
+    role: "viewer",
+    status: "active",
+  });
+  await h.login(user);
+  list = (await h.request(path)).body.promos;
+  assert.ok(list.every((p) => !p.can_deactivate));
+  assert.equal(
+    (await h.request(path + "/EDITOR", "PATCH", { active: false })).status,
+    403,
+  );
+  h.setBearer("");
+  assert.equal(
+    (await h.request(path + "/OWNER", "PATCH", { active: false })).status,
+    401,
+  );
+});
+
+test("legacy promo authors stay unknown after deletion and recreation; history is event-scoped", async (t) => {
+  const h = await harness(t);
+  await h.login();
+  const path = "/team/events/red-moon/promos";
+  const promo = { code: "LEGACY", kind: "percent", value: 500, active: true };
+  await h.store.run(
+    "UPDATE events SET promo_codes=? WHERE id=?",
+    JSON.stringify([promo]),
+    "red-moon",
+  );
+  await h.store.audit("not-json", "red-moon", "admin");
+  await h.store.audit(
+    JSON.stringify({ action: "promo_created", promo }),
+    "other-event",
+    "10001",
+  );
+  let legacy = (await h.request(path)).body.promos[0];
+  assert.equal(legacy.created_by, null);
+  assert.equal(legacy.creator_name, null);
+  assert.equal(legacy.can_deactivate, true);
+  const before = await h.store.pricingOverview("red-moon");
+  await h.store.updatePricing(
+    "red-moon",
+    {
+      revision: before.revision,
+      tiers: before.tiers.map(({ quantity, price }) => ({ quantity, price })),
+      promos: [],
+    },
+    "admin",
+  );
+  assert.equal((await h.request(path, "POST", promo)).status, 201);
+  legacy = (await h.request(path)).body.promos[0];
+  assert.equal(legacy.created_by, null);
+  assert.equal(
+    (await h.request(path + "/LEGACY", "PATCH", { active: false })).status,
+    200,
+  );
 });
 
 test("team wristband totals are event-wide, independent of entry and contain no guest data", async (t) => {

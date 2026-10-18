@@ -9,7 +9,13 @@ import {
   type PromoUsage,
 } from "./AdminPriceRules";
 
-type PromoList = { promos: PromoRule[]; usage: PromoUsage };
+type TeamPromo = PromoRule & {
+  created_by: string | null;
+  creator_name: string | null;
+  created_at: string | null;
+  can_deactivate: boolean;
+};
+type PromoList = { promos: TeamPromo[]; usage: PromoUsage };
 type Call = <T>(path: string, method?: string, body?: unknown) => Promise<T>;
 const emptyPromo: PromoDraft = {
   code: "",
@@ -73,7 +79,7 @@ export function TeamPromos({
     setError("");
     setSuccess("");
     try {
-      const saved = await call<PromoRule>(path, "POST", promoRule(draft));
+      const saved = await call<TeamPromo>(path, "POST", promoRule(draft));
       setData((value) => ({
         promos: [...(value?.promos || []), saved],
         usage: value?.usage || {},
@@ -84,6 +90,37 @@ export function TeamPromos({
     } catch (e) {
       setError(
         `${(e as Error).message} Перед повторным созданием обновите список: код мог сохраниться.`,
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function deactivate(promo: TeamPromo) {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    setSuccess("");
+    try {
+      const saved = await call<TeamPromo>(
+        `${path}/${encodeURIComponent(promo.code)}`,
+        "PATCH",
+        { active: false },
+      );
+      setData(
+        (value) =>
+          value && {
+            ...value,
+            promos: value.promos.map((row) =>
+              row.code === saved.code ? saved : row,
+            ),
+          },
+      );
+      setSuccess(
+        `Промокод ${saved.code} отключён. Скидки в оформленных заказах сохранены.`,
+      );
+    } catch (e) {
+      setError(
+        `${(e as Error).message} Обновите список, чтобы проверить статус кода.`,
       );
     } finally {
       setBusy(false);
@@ -198,13 +235,29 @@ export function TeamPromos({
                 ? `До ${dateLabel(promo.ends_at)}`
                 : "Без даты окончания"}
             </p>
+            <div className="team-link-footer">
+              <small>
+                Создал: {promo.creator_name || "Автор не указан"}
+                {promo.created_at && <> · {dateLabel(promo.created_at)}</>}
+              </small>
+              {promo.can_deactivate && (
+                <button
+                  disabled={busy}
+                  aria-label={`Отключить промокод ${promo.code}`}
+                  onClick={() => void deactivate(promo)}
+                >
+                  Отключить
+                </button>
+              )}
+            </div>
           </article>
         );
       })}
       <p className="team-note">
         Промокоды общие с админкой сайта. Незавершённые заказы резервируют
-        лимит. Изменить или отключить существующий код можно в админке: «Билеты
-        и цены».
+        лимит. Отключение запрещает новые заказы с кодом, сохраняя уже
+        оформленные. Редактор может отключать свои коды, владелец — любые.
+        Остальные настройки доступны в админке: «Билеты и цены».
       </p>
     </section>
   );
