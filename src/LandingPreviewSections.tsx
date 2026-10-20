@@ -161,6 +161,7 @@ export default function LandingPreviewSections({
         {[
           ["about", "О событии"],
           ["lineup", "Лайнап"],
+          ["moon-box", "Лунный бокс"],
           ["dresscode", "Дресс-код"],
           ["collab", "Организаторы"],
         ].map(([id, label], i) => (
@@ -178,7 +179,7 @@ export default function LandingPreviewSections({
         aria-labelledby="lp-about-title"
       >
         <div className="lp-eyebrow">
-          <span /> О СОБЫТИИ <i>01 / 04</i>
+          <span /> О СОБЫТИИ <i>01 / 05</i>
         </div>
         <div className="lp-about-grid">
           <h2 id="lp-about-title" className="lp-display">
@@ -237,7 +238,7 @@ export default function LandingPreviewSections({
       >
         <div className="lp-wrap">
           <div className="lp-eyebrow">
-            <span /> МУЗЫКА <i>02 / 04</i>
+            <span /> МУЗЫКА <i>02 / 05</i>
           </div>
           <div className="lp-heading-row">
             <h2 id="lp-lineup-title" className="lp-display">
@@ -280,12 +281,76 @@ export default function LandingPreviewSections({
       </section>
 
       <section
+        id="moon-box"
+        className="lp-moonbox lp-section"
+        aria-labelledby="lp-moonbox-title"
+      >
+        <div className="lp-wrap">
+          <div className="lp-eyebrow">
+            <span /> ВАШ КЛЮЧ К НОЧИ <i>03 / 05</i>
+          </div>
+          <div className="lp-about-grid">
+            <div>
+              <h2 id="lp-moonbox-title" className="lp-display">
+                ЛУННЫЙ
+                <br />
+                <em>БОКС.</em>
+              </h2>
+              <div className="lp-about-copy">
+                <p>
+                  Чтобы ожидание вечеринки стало ещё более ярким, мы подготовили
+                  специальные лунные боксы с браслетом, который будет служить
+                  ключом для входа на вечеринку.
+                </p>
+                <p>
+                  С боксом можно снять эффектную распаковку браслета, а мы будем
+                  ставить лайки и делать репосты ваших кадров.
+                </p>
+              </div>
+            </div>
+            <div className="lp-moonbox-pickup">
+              <span className="lp-rule-number">ЗАБРАТЬ МОЖНО УЖЕ СЕЙЧАС</span>
+              <h3>
+                До{" "}
+                <time dateTime={`${event.date}T14:00:00+03:00`}>
+                  {dateLabel(event.date)}, <em>14:00</em>
+                </time>
+              </h3>
+              <p>
+                <strong>В пространстве «{event.venue}»</strong>
+                <br />
+                {event.address}
+              </p>
+              <p>Для получения предъявите билет с QR-кодом.</p>
+              <a
+                className="button secondary"
+                href={`https://yandex.ru/maps/?text=${encodeURIComponent(event.address)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`Как добраться: ${event.venue}, ${event.address} — открыть в Яндекс Картах, новая вкладка`}
+              >
+                Как добраться <ArrowUpRight size={18} aria-hidden="true" />
+              </a>
+            </div>
+          </div>
+          <div className="lp-moonbox-note">
+            <h3>Если не успеете забрать заранее</h3>
+            <p>
+              Свой браслет вы получите при входе на вечеринку. На входе браслеты
+              выдаются без специального бокса — для вашего удобства и комфорта
+              на вечеринке.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section
         id="dresscode"
         className="lp-dresscode lp-section lp-wrap"
         aria-labelledby="lp-dresscode-title"
       >
         <div className="lp-eyebrow">
-          <span /> ОБРАЗ НОЧИ <i>03 / 04</i>
+          <span /> ОБРАЗ НОЧИ <i>04 / 05</i>
         </div>
         <div className="lp-heading-row">
           <h2 id="lp-dresscode-title" className="lp-display">
@@ -374,7 +439,7 @@ export default function LandingPreviewSections({
       >
         <div className="lp-wrap">
           <div className="lp-eyebrow">
-            <span /> КОЛЛАБОРАЦИЯ <i>04 / 04</i>
+            <span /> КОЛЛАБОРАЦИЯ <i>05 / 05</i>
           </div>
           <div className="lp-heading-row">
             <h2 id="lp-collab-title" className="lp-display">
