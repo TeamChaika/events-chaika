@@ -673,6 +673,31 @@ form label > small {
   font-weight: 400;
   color: #85817d;
 }
+.staff-form {
+  display: grid;
+  gap: 18px;
+}
+.integration-grid.staff-grid {
+  margin-top: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+}
+.staff-card h2,
+.staff-card p,
+.admin-profile {
+  overflow-wrap: anywhere;
+}
+.staff-card h2 {
+  font-size: 20px;
+}
+.staff-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+.staff-actions .button {
+  min-height: 44px;
+}
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;

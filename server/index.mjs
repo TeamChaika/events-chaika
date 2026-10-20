@@ -25,6 +25,7 @@ import { checkSmsAero } from "./smsaero.mjs";
 import { telegram } from "./telegram.mjs";
 import { legalService } from "./legal.mjs";
 import { marketingService } from "./marketing.mjs";
+import { staffService } from "./staff.mjs";
 import {
   promotionService,
   registerTeamRoutes,
@@ -125,6 +126,7 @@ export async function createApp({
   if (process.env.REQUIRE_POSTGRES === "true" && !databaseUrl)
     throw new Error("DATABASE_URL is required on ephemeral hosting");
   const store = await openStore(dbPath, databaseUrl, demo ? "demo" : "live");
+  const staffAccounts = staffService(store, { demo });
   const marketing = marketingService(store);
   const promotion = promotionService(store, origin);
   let legal;
@@ -217,6 +219,7 @@ export async function createApp({
   const authLimit = rateLimit({
     windowMs: 15 * 60000,
     limit: 15,
+    skipSuccessfulRequests: true,
     message: { error: "Слишком много попыток входа. Подождите 15 минут." },
   });
   const teamAuthLimit = rateLimit({
@@ -224,6 +227,13 @@ export async function createApp({
     limit: 15,
     skipSuccessfulRequests: true,
     message: { error: "Слишком много попыток входа. Подождите 15 минут." },
+  });
+  const staffWriteLimit = rateLimit({
+    windowMs: 60000,
+    limit: 10,
+    message: {
+      error: "Слишком много изменений сотрудников. Подождите минуту.",
+    },
   });
   const orderLimit = rateLimit({
     windowMs: 60000,
@@ -260,13 +270,7 @@ export async function createApp({
         return next(new AppError(403, "Недопустимый источник запроса"));
     }
     const session = cookies(req).staff;
-    req.staff = session
-      ? await store.get(
-          "SELECT role,id FROM sessions WHERE id=? AND expires_at>?",
-          hash(session),
-          Date.now(),
-        )
-      : null;
+    req.staff = session ? await staffAccounts.session(hash(session)) : null;
     next();
   });
   const staff = (req, _res, next) =>
@@ -352,29 +356,19 @@ export async function createApp({
       throw new AppError(400, "Неверная версия документа");
     res.json(await legal.document(req.params.slug, req.query.hash));
   });
-  app.get("/api/auth", (_req, res) =>
-    res.json({ role: _req.staff?.role || null, demo }),
+  app.get("/api/auth", async (_req, res) =>
+    res.json({
+      ...staffAccounts.publicSession(_req.staff),
+      demo,
+      legacy_door_login: !(await staffAccounts.hasDoorAccounts()),
+    }),
   );
   app.post("/api/auth/login", authLimit, async (req, res) => {
-    const role = req.body.role === "door" ? "door" : "admin";
-    const expected =
-      role === "admin"
-        ? process.env.ADMIN_PASSWORD
-        : process.env.SCANNER_PASSWORD;
-    if (
-      !(demo && req.body.demo === true) &&
-      (!expected || !same(req.body.password || "", expected))
-    )
-      throw new AppError(401, "Неверный пароль");
-    const value = token();
-    await store.run(
-      "INSERT INTO sessions VALUES (?,?,?)",
-      hash(value),
-      role,
-      Date.now() + 12 * 3600000,
-    );
+    const { value, user } = await staffAccounts.login(req.body);
+    if (req.staff)
+      await store.run("DELETE FROM sessions WHERE id=?", req.staff.id);
     setCookie(res, "staff", value, 12 * 3600000);
-    res.json({ role });
+    res.json(user);
   });
   app.post("/api/auth/logout", async (req, res) => {
     if (req.staff)
@@ -382,6 +376,25 @@ export async function createApp({
     res.clearCookie("staff", { path: "/" });
     res.json({ ok: true });
   });
+  app.get("/api/admin/staff", staff, admin, async (_req, res) =>
+    res.json(await staffAccounts.list()),
+  );
+  app.post(
+    "/api/admin/staff",
+    staff,
+    admin,
+    staffWriteLimit,
+    async (req, res) =>
+      res.status(201).json(await staffAccounts.create(req.body, req.staff)),
+  );
+  app.patch(
+    "/api/admin/staff/:id",
+    staff,
+    admin,
+    staffWriteLimit,
+    async (req, res) =>
+      res.json(await staffAccounts.update(req.params.id, req.body, req.staff)),
+  );
 
   const publicOrder = async (o) => {
     const e = await store.event(o.event_id);
@@ -1096,7 +1109,7 @@ export async function createApp({
           input.quantity,
           input.expected_checked,
           input.request_id,
-          req.staff.role,
+          req.staff.actor,
           demo,
         ),
       ),
@@ -1112,7 +1125,7 @@ export async function createApp({
     const { event_id, code } = checkinInput.parse(req.body);
     res.json(
       checkinResponse(
-        await store.checkin(code, event_id, req.staff.role, demo),
+        await store.checkin(code, event_id, req.staff.actor, demo),
       ),
     );
   });
@@ -1135,7 +1148,7 @@ export async function createApp({
       input.quantity,
       input.expected_checked,
       input.request_id,
-      req.staff.role,
+      req.staff.actor,
       demo,
     );
     res.json(checkinResponse(t));

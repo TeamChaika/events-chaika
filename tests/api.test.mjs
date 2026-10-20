@@ -124,6 +124,418 @@ const marketingBody = (h, extra = {}) => ({
   },
 });
 
+const employeeInput = (username = "anna.door", role = "door") => ({
+  username,
+  display_name: "Анна · контроль входа",
+  role,
+  password: "Test-only-password-2026",
+});
+function employeeClient(h) {
+  let cookie = "";
+  return async (path, method = "GET", body) => {
+    const response = await fetch(h.base + "/api" + path, {
+      method,
+      headers: {
+        Origin: origin,
+        "Content-Type": "application/json",
+        Cookie: cookie,
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    for (const value of response.headers.getSetCookie())
+      if (value.startsWith("staff=")) cookie = value.split(";")[0];
+    return { status: response.status, body: await response.json() };
+  };
+}
+
+test("individual staff logins are normalized, salted, private and cannot forge admin access", async (t) => {
+  const h = await harness(t);
+  const stranger = employeeClient(h);
+  assert.equal((await stranger("/admin/staff")).status, 401);
+  await h.login();
+  const created = await h.request("/admin/staff", {
+    method: "POST",
+    body: employeeInput(" Anna.Door "),
+  });
+  assert.equal(created.status, 201);
+  assert.equal(created.body.username, "anna.door");
+  assert.equal("password_hash" in created.body, false);
+  const second = await h.request("/admin/staff", {
+    method: "POST",
+    body: employeeInput("boris.door"),
+  });
+  assert.equal(second.status, 201);
+  const rows = await h.store.all("SELECT password_hash FROM staff_accounts");
+  assert.notEqual(rows[0].password_hash, rows[1].password_hash);
+  assert.ok(
+    rows.every((row) => !row.password_hash.includes(employeeInput().password)),
+  );
+  assert.equal(
+    (
+      await h.request("/admin/staff", {
+        method: "POST",
+        body: employeeInput("ANNA.DOOR"),
+      })
+    ).status,
+    409,
+  );
+  assert.equal(
+    (
+      await h.request("/admin/staff", {
+        method: "POST",
+        body: { ...employeeInput("weak"), password: "short" },
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await stranger("/auth/login", "POST", {
+        username: "anna.door",
+        password: "wrong",
+        demo: true,
+      })
+    ).status,
+    401,
+  );
+  assert.equal(
+    (
+      await stranger("/auth/login", "POST", {
+        username: "unknown",
+        password: employeeInput().password,
+      })
+    ).status,
+    401,
+  );
+  const login = await stranger("/auth/login", "POST", {
+    username: "ANNA.DOOR",
+    password: employeeInput().password,
+    role: "admin",
+  });
+  assert.equal(login.status, 200);
+  assert.equal(login.body.role, "door");
+  assert.equal(login.body.staff_id, created.body.id);
+  assert.equal(login.body.display_name, employeeInput().display_name);
+  const overview = await stranger("/admin/overview");
+  assert.equal(overview.status, 200);
+  assert.equal(overview.body.orders, undefined);
+  assert.equal((await stranger("/admin/staff")).status, 403);
+  assert.equal(
+    (await stranger("/admin/staff", "POST", employeeInput("forged", "admin")))
+      .status,
+    403,
+  );
+  assert.equal(
+    (
+      await stranger(`/admin/staff/${created.body.id}`, "PATCH", {
+        active: false,
+      })
+    ).status,
+    403,
+  );
+  assert.equal((await stranger("/auth")).body.staff_id, created.body.id);
+  assert.ok((await h.request("/admin/staff")).body[0].last_login_at);
+  assert.ok(
+    (await h.request("/admin/staff")).body.every(
+      (row) => !("password_hash" in row),
+    ),
+  );
+});
+
+test("first individual controller retires old scanner sessions without locking out the owner", async (t) => {
+  const h = await harness(t);
+  const shared = employeeClient(h);
+  assert.equal((await shared("/auth")).body.legacy_door_login, true);
+  assert.equal(
+    (await shared("/auth/login", "POST", { role: "door", demo: true })).status,
+    200,
+  );
+  await h.login();
+  const created = await h.request("/admin/staff", {
+    method: "POST",
+    body: employeeInput(),
+  });
+  assert.equal(created.status, 201);
+  assert.equal((await shared("/auth")).body.legacy_door_login, false);
+  assert.equal((await shared("/admin/overview")).status, 401);
+  assert.equal(
+    (await shared("/auth/login", "POST", { role: "door", demo: true })).status,
+    401,
+  );
+  await h.request(`/admin/staff/${created.body.id}`, {
+    method: "PATCH",
+    body: { active: false },
+  });
+  assert.equal(
+    (await shared("/auth/login", "POST", { role: "door", demo: true })).status,
+    401,
+  );
+  assert.equal((await h.request("/admin/staff")).status, 200);
+});
+
+test("password resets and disabling immediately revoke every device but preserve other employees", async (t) => {
+  const h = await harness(t);
+  await h.login();
+  const one = (
+    await h.request("/admin/staff", { method: "POST", body: employeeInput() })
+  ).body;
+  await h.request("/admin/staff", {
+    method: "POST",
+    body: employeeInput("boris"),
+  });
+  const phone = employeeClient(h),
+    tablet = employeeClient(h),
+    other = employeeClient(h);
+  const credentials = {
+    username: "anna.door",
+    password: employeeInput().password,
+  };
+  assert.equal((await phone("/auth/login", "POST", credentials)).status, 200);
+  assert.equal((await tablet("/auth/login", "POST", credentials)).status, 200);
+  await other("/auth/login", "POST", { ...credentials, username: "boris" });
+  const reset = await h.request(`/admin/staff/${one.id}`, {
+    method: "PATCH",
+    body: { password: "New-test-only-password" },
+  });
+  assert.equal(reset.status, 200);
+  assert.equal((await phone("/checkin/summary?event_id=red-moon")).status, 401);
+  assert.equal(
+    (await tablet("/wristbands/summary?event_id=red-moon")).status,
+    401,
+  );
+  assert.equal((await other("/admin/overview")).status, 200);
+  assert.equal((await phone("/auth/login", "POST", credentials)).status, 401);
+  const updated = { ...credentials, password: "New-test-only-password" };
+  assert.equal((await phone("/auth/login", "POST", updated)).status, 200);
+  assert.equal(
+    (
+      await h.request(`/admin/staff/${one.id}`, {
+        method: "PATCH",
+        body: { active: false },
+      })
+    ).status,
+    200,
+  );
+  assert.equal((await phone("/admin/overview")).status, 401);
+  assert.equal((await phone("/auth/login", "POST", updated)).status, 401);
+  await h.request(`/admin/staff/${one.id}`, {
+    method: "PATCH",
+    body: { active: true },
+  });
+  assert.equal((await phone("/admin/overview")).status, 401);
+  assert.equal((await phone("/auth/login", "POST", updated)).status, 200);
+  const records = await h.store.all(
+    "SELECT action FROM audit WHERE entity=?",
+    one.id,
+  );
+  assert.deepEqual(
+    records.map((row) => row.action).sort(),
+    [
+      "staff_created",
+      "staff_password_changed",
+      "staff_disabled",
+      "staff_enabled",
+    ].sort(),
+  );
+});
+
+test("personal administrators keep their own session safe and management requires the correct origin", async (t) => {
+  const h = await harness(t);
+  await h.login();
+  const created = (
+    await h.request("/admin/staff", {
+      method: "POST",
+      body: employeeInput("manager", "admin"),
+    })
+  ).body;
+  const manager = employeeClient(h);
+  assert.equal(
+    (
+      await manager("/auth/login", "POST", {
+        username: "manager",
+        password: employeeInput().password,
+        role: "door",
+      })
+    ).body.role,
+    "admin",
+  );
+  assert.equal((await manager("/admin/staff")).status, 200);
+  assert.equal(
+    (await manager(`/admin/staff/${created.id}`, "PATCH", { active: false }))
+      .status,
+    409,
+  );
+  assert.equal(
+    (
+      await manager(`/admin/staff/${created.id}`, "PATCH", {
+        password: "Changed-test-password",
+      })
+    ).status,
+    409,
+  );
+  assert.equal(
+    (
+      await h.request("/admin/staff", {
+        method: "POST",
+        body: employeeInput(),
+        asOrigin: "https://untrusted.example",
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await h.request(`/admin/staff/${created.id}`, {
+        method: "PATCH",
+        body: { role: "door" },
+      })
+    ).status,
+    400,
+  );
+});
+
+test("scanner and wristband records identify the employee and remain independent", async (t) => {
+  const h = await harness(t);
+  const order = await h.order();
+  assert.equal(order.status, 201);
+  const paid = await h.request(`/orders/${order.body.access_token}/demo-pay`, {
+    method: "POST",
+    body: {},
+  });
+  assert.equal(paid.status, 200);
+  const ticket = await h.store.get(
+    "SELECT code FROM tickets WHERE order_id=? ORDER BY ordinal",
+    order.body.id,
+  );
+  await h.login();
+  const created = (
+    await h.request("/admin/staff", { method: "POST", body: employeeInput() })
+  ).body;
+  const employee = employeeClient(h);
+  await employee("/auth/login", "POST", {
+    username: "anna.door",
+    password: employeeInput().password,
+  });
+  const input = {
+    event_id: "red-moon",
+    code: ticket.code,
+    quantity: 1,
+    expected_checked: 0,
+    request_id: randomUUID(),
+  };
+  assert.equal(
+    (await employee("/wristbands/group", "POST", input)).status,
+    200,
+  );
+  assert.equal(
+    (
+      await h.store.get(
+        "SELECT COUNT(*) AS n FROM tickets WHERE used_at IS NOT NULL",
+      )
+    ).n,
+    0,
+  );
+  assert.equal(
+    (
+      await employee("/checkin/group", "POST", {
+        ...input,
+        request_id: randomUUID(),
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (await h.store.get("SELECT actor FROM wristband_batches")).actor,
+    `staff:${created.id}`,
+  );
+  assert.equal(
+    (await h.store.get("SELECT used_by FROM tickets WHERE used_at IS NOT NULL"))
+      .used_by,
+    `staff:${created.id}`,
+  );
+  await employee("/auth/logout", "POST", {});
+  assert.equal((await employee("/admin/overview")).status, 401);
+  assert.equal(
+    (await h.store.get("SELECT COUNT(*) AS n FROM staff_sessions")).n,
+    0,
+  );
+});
+
+test("live staff login requires credentials and expired personal sessions are rejected", async (t) => {
+  const previous = process.env.ADMIN_PASSWORD;
+  process.env.ADMIN_PASSWORD = "Fixture-owner-password-2026";
+  t.after(() => {
+    if (previous === undefined) delete process.env.ADMIN_PASSWORD;
+    else process.env.ADMIN_PASSWORD = previous;
+  });
+  const h = await harness(t, { demo: false });
+  assert.equal((await h.login()).status, 401);
+  assert.equal(
+    (
+      await h.request("/auth/login", {
+        method: "POST",
+        body: { password: process.env.ADMIN_PASSWORD },
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (await h.request("/admin/staff", { method: "POST", body: employeeInput() }))
+      .status,
+    201,
+  );
+  const employee = employeeClient(h);
+  assert.equal(
+    (
+      await employee("/auth/login", "POST", {
+        username: "anna.door",
+        demo: true,
+      })
+    ).status,
+    401,
+  );
+  assert.equal(
+    (
+      await employee("/auth/login", "POST", {
+        username: "anna.door",
+        password: employeeInput().password,
+      })
+    ).status,
+    200,
+  );
+  await h.store.run(
+    "UPDATE sessions SET expires_at=? WHERE id IN (SELECT session_id FROM staff_sessions)",
+    Date.now() - 1,
+  );
+  assert.equal((await employee("/admin/overview")).status, 401);
+  assert.equal((await employee("/auth")).body.role, null);
+  assert.equal((await h.request("/admin/staff")).status, 200);
+});
+
+test("staff on shared Wi-Fi can sign in without consuming the failed-login allowance", async (t) => {
+  const h = await harness(t);
+  for (let i = 0; i < 16; i++) assert.equal((await h.login()).status, 200);
+  for (let i = 0; i < 15; i++)
+    assert.equal(
+      (
+        await h.request("/auth/login", {
+          method: "POST",
+          body: { password: "wrong-password" },
+        })
+      ).status,
+      401,
+    );
+  assert.equal(
+    (
+      await h.request("/auth/login", {
+        method: "POST",
+        body: { password: "wrong-password" },
+      })
+    ).status,
+    429,
+  );
+});
+
 test("advertising is optional, never inferred, and requires the displayed document hash", async (t) => {
   const h = await harness(t);
   const ordinary = await h.order();
@@ -1879,11 +2291,7 @@ test("production CSP separates public posters, private pages and the Telegram pa
         path === "/" || path === "/moon/sunset-tg",
         path,
       );
-      assert.equal(
-        policy.includes("https://telegram.org"),
-        false,
-        path,
-      );
+      assert.equal(policy.includes("https://telegram.org"), false, path);
       assert.ok(!policy.includes("unsafe-eval"));
       if (path === "/team") {
         assert.ok(policy.includes("frame-ancestors https://web.telegram.org"));

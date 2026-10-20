@@ -56,6 +56,14 @@ export async function openStore(
       issued_at TEXT NOT NULL, actor TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS wristband_batches_order ON wristband_batches(order_id);
     CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, role TEXT NOT NULL, expires_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS staff_accounts (
+      id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL,
+      password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('admin','door')),
+      active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)), created_at TEXT NOT NULL, last_login_at TEXT);
+    CREATE TABLE IF NOT EXISTS staff_sessions (
+      session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+      staff_id TEXT NOT NULL REFERENCES staff_accounts(id));
+    CREATE INDEX IF NOT EXISTS staff_sessions_account ON staff_sessions(staff_id);
     CREATE TABLE IF NOT EXISTS outbox (
       id TEXT PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id), channel TEXT NOT NULL,
       kind TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0,
@@ -123,6 +131,8 @@ export async function openStore(
             "checkin_batches",
             "wristband_batches",
             "sessions",
+            "staff_accounts",
+            "staff_sessions",
             "outbox",
             "audit",
             "media",

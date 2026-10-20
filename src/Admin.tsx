@@ -27,6 +27,7 @@ import { GuestSearch } from "./GuestSearch";
 import { AcceptanceHistory } from "./Legal";
 import { OrderManagement } from "./OrderManagement";
 import { AdminPricing } from "./AdminPricing";
+import { StaffAccounts } from "./StaffAccounts";
 import {
   api,
   ApiError,
@@ -82,11 +83,20 @@ type Overview = {
   };
   deliveries: Delivery[];
 };
+type StaffIdentity = {
+  role: string | null;
+  staff_id: string | null;
+  display_name: string | null;
+};
 export function Admin() {
   const requestedWristbands = location.pathname.startsWith("/wristbands");
   const requestedDoor =
     location.pathname.startsWith("/checkin") || requestedWristbands;
   const [role, setRole] = useState<string | null | undefined>(),
+    [identity, setIdentity] = useState<StaffIdentity | null>(null),
+    [sharedLogin, setSharedLogin] = useState(false),
+    [personalLogin, setPersonalLogin] = useState(false),
+    [legacyDoorLogin, setLegacyDoorLogin] = useState(false),
     [demo, setDemo] = useState(false),
     [data, setData] = useState<Overview>(),
     [tab, setTab] = useState(
@@ -116,11 +126,15 @@ export function Admin() {
         .toLowerCase()
         .includes(search.toLowerCase()),
   );
+  const demoLogin =
+    demo && !personalLogin && (!requestedDoor || legacyDoorLogin);
   useEffect(() => {
-    api<{ role: string | null; demo: boolean }>("/auth")
+    api<StaffIdentity & { demo: boolean; legacy_door_login: boolean }>("/auth")
       .then((a) => {
         setRole(a.role);
+        setIdentity(a);
         setDemo(a.demo);
+        setLegacyDoorLogin(a.legacy_door_login);
         if (a.role === "door")
           setTab(requestedWristbands ? "wristbands" : "checkin");
         if (a.role) load();
@@ -133,15 +147,26 @@ export function Admin() {
     setError("");
     const f = new FormData(e.currentTarget);
     try {
-      const a = await api<{ role: string }>("/auth/login", {
+      const a = await api<StaffIdentity>("/auth/login", {
         method: "POST",
         body: JSON.stringify({
           role: requestedDoor ? "door" : "admin",
-          password: f.get("password"),
+          username: sharedLogin || asDemo ? undefined : f.get("username"),
+          password: f.get("password") || undefined,
           demo: asDemo,
         }),
       });
       setRole(a.role);
+      setIdentity(a);
+      setTab(
+        a.role === "door"
+          ? requestedWristbands
+            ? "wristbands"
+            : "checkin"
+          : requestedDoor
+            ? tab
+            : "events",
+      );
       load();
     } catch (e) {
       setError((e as Error).message);
@@ -179,18 +204,35 @@ export function Admin() {
                 ? "Впускайте гостей с помощью камеры телефона."
                 : "Всё, чтобы ваша ночь прошла идеально."}
           </p>
-          <form onSubmit={(e) => login(e, demo)}>
-            {!demo && (
-              <label>
-                Пароль
-                <input
-                  name="password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  autoFocus
-                />
-              </label>
+          <form onSubmit={(e) => login(e, demoLogin)}>
+            {!demoLogin && (
+              <>
+                {!sharedLogin && (
+                  <label>
+                    Логин
+                    <input
+                      name="username"
+                      autoComplete="username"
+                      autoCapitalize="none"
+                      spellCheck={false}
+                      maxLength={48}
+                      required
+                      autoFocus
+                    />
+                  </label>
+                )}
+                <label>
+                  Пароль
+                  <input
+                    name="password"
+                    type="password"
+                    autoComplete="current-password"
+                    required
+                    maxLength={128}
+                    autoFocus={sharedLogin}
+                  />
+                </label>
+              </>
             )}
             <ErrorNotice text={error} />
             {demo && (
@@ -199,10 +241,38 @@ export function Admin() {
               </div>
             )}
             <button className="button primary full" disabled={busy}>
-              {busy ? <Spinner /> : demo ? "Открыть демо-панель" : "Войти"}
+              {busy ? <Spinner /> : demoLogin ? "Открыть демо-панель" : "Войти"}
               <ArrowUpRight size={18} />
             </button>
           </form>
+          {demo && (!requestedDoor || legacyDoorLogin) && (
+            <button
+              type="button"
+              className="text-link"
+              onClick={() => {
+                setPersonalLogin(!personalLogin);
+                setError("");
+              }}
+            >
+              {personalLogin ? "Вход в демо-панель" : "Войти как сотрудник"}
+            </button>
+          )}
+          {!demo && (!requestedDoor || legacyDoorLogin) && (
+            <button
+              type="button"
+              className="text-link"
+              onClick={() => {
+                setSharedLogin(!sharedLogin);
+                setError("");
+              }}
+            >
+              {sharedLogin
+                ? "Войти как сотрудник"
+                : requestedDoor
+                  ? "Вход по общему паролю сканера"
+                  : "Вход владельца по прежнему паролю"}
+            </button>
+          )}
           <a className="text-link" href="/">
             <ArrowLeft size={15} />
             Вернуться на сайт
@@ -230,6 +300,7 @@ export function Admin() {
                 ["orders", "Заказы и билеты", Ticket],
                 ["checkin", "Контроль входа", ScanLine],
                 ["wristbands", "Выдача браслетов", Ticket],
+                ["staff", "Сотрудники", Users],
                 ["settings", "Подключения", Settings2],
               ]
             : [
@@ -270,6 +341,7 @@ export function Admin() {
               try {
                 await api("/auth/logout", { method: "POST", body: "{}" });
                 setRole(null);
+                setIdentity(null);
                 setData(undefined);
               } catch (e) {
                 setError((e as Error).message);
@@ -295,12 +367,15 @@ export function Admin() {
                     ? "Вход"
                     : tab === "wristbands"
                       ? "Браслеты"
-                      : "Сервисы"}
+                      : tab === "staff"
+                        ? "Сотрудники"
+                        : "Сервисы"}
             </span>
           </span>
           <span className="admin-profile">
             <i />
-            {role === "door" ? "Контролёр" : "Администратор"}
+            {identity?.display_name ||
+              (role === "door" ? "Контролёр" : "Администратор")}
           </span>
         </header>
         <main className="admin-content">
@@ -869,6 +944,9 @@ export function Admin() {
                     )}
                   </div>
                 </>
+              )}
+              {tab === "staff" && role === "admin" && (
+                <StaffAccounts currentId={identity?.staff_id || null} />
               )}
             </>
           )}
