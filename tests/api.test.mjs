@@ -242,6 +242,51 @@ test("individual staff logins are normalized, salted, private and cannot forge a
   );
 });
 
+test("email-shaped staff usernames support creation, normalized login and role boundaries", async (t) => {
+  const h = await harness(t);
+  await h.login();
+  for (const [username, role] of [
+    ["1@chaika.team", "admin"],
+    ["dvor@chaika.team", "door"],
+  ]) {
+    const created = await h.request("/admin/staff", {
+      method: "POST",
+      body: employeeInput(` ${username.toUpperCase()} `, role),
+    });
+    assert.equal(created.status, 201);
+    assert.equal(created.body.username, username);
+    assert.equal(
+      (
+        await h.request("/admin/staff", {
+          method: "POST",
+          body: employeeInput(username, role),
+        })
+      ).status,
+      409,
+    );
+    const client = employeeClient(h);
+    const login = await client("/auth/login", "POST", {
+      username: username.toUpperCase(),
+      password: employeeInput().password,
+    });
+    assert.equal(login.status, 200);
+    assert.equal(login.body.role, role);
+    assert.equal(
+      (await client("/admin/staff")).status,
+      role === "admin" ? 200 : 403,
+    );
+  }
+  assert.equal(
+    (
+      await h.request("/admin/staff", {
+        method: "POST",
+        body: employeeInput("bad name@chaika.team"),
+      })
+    ).status,
+    400,
+  );
+});
+
 test("first individual controller retires old scanner sessions without locking out the owner", async (t) => {
   const h = await harness(t);
   const shared = employeeClient(h);

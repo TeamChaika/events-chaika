@@ -192,7 +192,7 @@ export function StaffAccounts({ currentId }: { currentId: string | null }) {
                     name="username"
                     minLength={3}
                     maxLength={48}
-                    pattern="[A-Za-z0-9][A-Za-z0-9._\-]*"
+                    pattern="[A-Za-z0-9][A-Za-z0-9.@_\-]*"
                     autoComplete="off"
                     autoCapitalize="none"
                     spellCheck={false}
@@ -200,7 +200,7 @@ export function StaffAccounts({ currentId }: { currentId: string | null }) {
                   />
                 </label>
                 <p className="small-text muted">
-                  Латинские буквы, цифры, точка, дефис или подчёркивание.
+                  Латинские буквы, цифры, точка, @, дефис или подчёркивание.
                 </p>
                 <label>
                   Роль
