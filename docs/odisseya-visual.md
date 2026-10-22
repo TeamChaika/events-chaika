@@ -1,0 +1,19 @@
+# Заставка «Одиссея смотрит на Ялту»
+
+22 октября 2026. Иллюстрация создана встроенным image_gen, анимация — Runway. Художественная интерпретация города по фото, не документальная панорама.
+
+Файлы:
+- public/assets/odisseya-yalta.jpg — иллюстрация.
+- public/assets/odisseya-yalta-loop.mp4 — немой цикл 1280×720, 24 fps, 9 с.
+- public/assets/odisseya-yalta-poster.jpg — первый кадр, запасной статичный фон.
+
+Географический ориентир: https://travelcrimea.com/kuda-poehat/20230612/2846981.html (фото не публикуется как самостоятельный материал).
+
+## Запрос иллюстрации
+Use case: compositing, identity-preserve. Asset: cinematic website background for the Greek gastronomic theatre event Odyssey in Yalta. Image 1 is the EDIT TARGET: preserve the exact handsome curly-haired bearded Odysseus, his identity, profile looking left, antique ivory linen cloak with muted navy fabric and gold brooch, warm sunlight, luxurious hand-painted oil-on-paper style, full-bleed wide landscape composition and character placement on the far RIGHT third. Image 2 is ONLY a GEOGRAPHIC reference for real Yalta: its curving seafront promenade with pale wave-pattern paving, white historic waterfront buildings, piers, green city slopes and long Crimean mountain ridge. CHANGE THE BACKGROUND of image1 into a recognizable Yalta Bay panorama rendered in image1's same painterly style. The hero is standing on a low coastal stone terrace at the right foreground looking toward Yalta across the water. The recognizable Yalta embankment and dense white city must be clearly readable in the CENTER and LEFT middle distance, with the long green mountain ridge above, NOT Greek islands, NOT Santorini, NOT an Italian harbor or fantasy rock towers. Use the geography and landmark arrangement of image2 as guidance, adapting perspective naturally so he faces the city. Deep clear blue sea with fine waves fills the lower-left half, city band is around 35-50% height, hero head stays at about 80% x, 25% y, don't cover the city with the hero. Preserve plenty of water at the left for separate HTML title. One small ancient ivory-sailed wooden vessel may remain in the far left water as a subtle Odyssey detail. The robe flows softly to right in a light sea breeze. Warm late-afternoon natural sunlight, ivory sky, navy and turquoise water, sophisticated painterly editorial detail. No text, no logos, no border, no giant foreground structures, no other foreground people, no zoomed-out tiny hero. Wide landscape 3:2. Keep the hero as large and beautiful as in image1. Image should read as Odyssey looking at Yalta, a contemporary real coastal city in a mythic illustration.
+
+## Запрос анимации
+Locked camera. Living painterly scene: this same Greek Odysseus stands calmly in the right foreground, looking left across the blue sea toward the real Yalta embankment and Crimean mountain ridge. Keep his identity, face, pose, all buildings, coastline, pier geometry and mountains stable and identical to the starting frame. Fine sunlit waves ripple across the bay, sunlight shimmers naturally. A soft sea breeze gently moves curls and the loose edge of his ivory cloak; slow subtle breathing. Tiny sailboat gently rocks in place. Keep character and city clearly readable. Continuous gentle ambient motion suitable for a seamless website loop. No camera movement, no zoom or pan, no cuts, no walking, no turning to camera, no large gestures, no changing buildings, no morphing, no new objects, no text. Preserve the warm ivory, rich blue and antique gold painterly aesthetic.
+
+## Проверки
+160 проверок приложения прошли; 2 PostgreSQL-проверки в основном запуске пропущены. Отдельный запуск API-тестов на временной локальной PostgreSQL: 80/80, без пропусков. Production-сборка успешна. База до обновления сохранена на сервере в /opt/chaika-events-supabase/backups/events-before-odisseya-cinema-20261022T165238Z.dump. Реальные покупки и сообщения при проверке не создаются.

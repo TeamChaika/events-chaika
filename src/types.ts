@@ -6,6 +6,8 @@ export type PriceLine = {
   total: number;
 };
 export type PriceQuote = {
+  ticket_option: string;
+  ticket_label: string;
   quantity: number;
   lines: PriceLine[];
   total: number;
@@ -26,6 +28,7 @@ export class ApiError extends Error {
   }
 }
 export type EventData = {
+  ticket_options?: { id: string; label: string; surcharge: number }[];
   id: string;
   public_slug?: string | null;
   title: string;
@@ -59,6 +62,7 @@ export type Config = {
   paymentReady: boolean;
 };
 export type TicketData = {
+  ticket_label?: string;
   code: string;
   ordinal: number;
   used_at: string | null;
@@ -66,6 +70,8 @@ export type TicketData = {
   group?: { issued: number; checked: number; remaining: number };
 };
 export type OrderData = {
+  ticket_option: string;
+  ticket_label: string;
   id: string;
   access_token: string;
   event: EventData;

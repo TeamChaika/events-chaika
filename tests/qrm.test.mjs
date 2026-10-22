@@ -143,6 +143,7 @@ test("QRM creation preflights terminal, uses kopecks and correlates callback", a
     webhook_token: "test-token",
     access_token: "access-token",
     email: "qa@example.com",
+    ticket_label: "С винным сопровождением",
   };
   await createPayment(
     order,
@@ -155,6 +156,7 @@ test("QRM creation preflights terminal, uses kopecks and correlates callback", a
   assert.match(body.payment_purpose, /^[A-Za-z0-9 -]+$/);
   assert.ok(body.payment_purpose.length <= 140);
   assert.equal(body.nomenclature[0].price, 500000);
+  assert.match(body.nomenclature[0].name, /С винным сопровождением/);
   assert.ok(body.notification_url.includes(order.id));
   calls.length = 0;
   const lines = [

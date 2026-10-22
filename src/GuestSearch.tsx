@@ -6,6 +6,7 @@ import { ErrorNotice, Spinner } from "./ui";
 type SearchOrder = {
   id: string;
   first_name: string;
+  ticket_label?: string;
   last_name: string;
   phone: string;
   group: { issued: number; checked: number; remaining: number };
@@ -120,6 +121,7 @@ export function GuestSearch({
                 <h3>
                   {order.first_name} {order.last_name}
                 </h3>
+                {order.ticket_label && <p>{order.ticket_label}</p>}
                 <p>
                   {order.phone} · Заказ {order.id.slice(0, 8)}
                 </p>

@@ -12,6 +12,7 @@ export function OrderManagement({
     first_name: string;
     last_name: string;
     quantity: number;
+    ticket_label?: string;
     checked_count: number;
     total: number;
     status: string;
@@ -60,6 +61,7 @@ export function OrderManagement({
           {order.quantity} бил. · {money(order.total)} ·{" "}
           {statusLabel[order.status]}
         </p>
+        {order.ticket_label && <p>{order.ticket_label}</p>}
         <p>
           Вошли: {order.checked_count} из {order.quantity}.
         </p>

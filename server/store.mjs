@@ -10,6 +10,8 @@ import {
   readPromos,
   scheduledLines,
   discountedQuote,
+  readTicketOptions,
+  ticketOption,
 } from "./pricing.mjs";
 import { openDatabase } from "./database.mjs";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -193,7 +195,7 @@ export async function openStore(
             `ALTER TABLE events ADD COLUMN ${db.kind === "postgres" ? "IF NOT EXISTS " : ""}${name} ${type}`,
           );
       }
-      for (const name of ["price_schedule", "promo_codes"]) {
+      for (const name of ["price_schedule", "promo_codes", "ticket_options"]) {
         if (
           db.kind === "postgres" ||
           !(await db.all("PRAGMA table_info(events)")).some(
@@ -214,6 +216,8 @@ export async function openStore(
           `ALTER TABLE team_members ADD COLUMN ${db.kind === "postgres" ? "IF NOT EXISTS " : ""}access_group_id TEXT`,
         );
       const orderColumns = [
+        ["ticket_option", "TEXT NOT NULL DEFAULT ''"],
+        ["ticket_label", "TEXT NOT NULL DEFAULT ''"],
         ["payment_account", "TEXT NOT NULL DEFAULT 'default'"],
         ["price_breakdown", "TEXT"],
         ["discount_snapshot", "TEXT"],
@@ -303,7 +307,7 @@ export async function openStore(
     }
     return usage;
   };
-  const quote = async (id, quantity, promoCode = "") => {
+  const quote = async (id, quantity, promoCode = "", optionId = "") => {
     const e = await get("SELECT * FROM events WHERE id=?", id);
     if (!e) throw new AppError(404, "Мероприятие не найдено");
     const tiers = readTiers(e.price_tiers);
@@ -349,9 +353,24 @@ export async function openStore(
           eligible = Math.min(quantity, available);
       }
     }
-    const priced = scheduledLines(lines, readSchedule(e.price_schedule));
+    let option;
     try {
-      return discountedQuote(quantity, priced, promo, eligible);
+      option = ticketOption(e, optionId);
+    } catch (error) {
+      throw new AppError(400, error.message, "TICKET_OPTION_INVALID");
+    }
+    try {
+      const priced = scheduledLines(lines, readSchedule(e.price_schedule)).map(
+        (line) => {
+          const unit_price = line.unit_price + (option?.surcharge || 0);
+          return { ...line, unit_price, total: unit_price * line.quantity };
+        },
+      );
+      return {
+        ...discountedQuote(quantity, priced, promo, eligible),
+        ticket_option: option?.id || "",
+        ticket_label: option?.label || "",
+      };
     } catch (error) {
       throw new AppError(400, error.message, "PROMO_INVALID");
     }
@@ -367,6 +386,7 @@ export async function openStore(
     return {
       ...publicEvent,
       base_price: e.price,
+      ticket_options: readTicketOptions(e.ticket_options),
       price_tiers: tiers,
       has_price_schedule: readSchedule(e.price_schedule).length > 0,
       price: (await quote(id, 1)).total,
@@ -694,7 +714,7 @@ export async function openStore(
       (part) => "%" + part.replace(/[!%_]/g, (c) => "!" + c) + "%",
     );
     const orders = await all(
-      `SELECT o.id,o.first_name,o.last_name,o.phone,o.method,o.mode FROM orders o WHERE o.event_id=? AND o.status='paid' AND o.voided_at IS NULL AND o.is_test=0 AND (?=1 OR o.mode='live') AND EXISTS (SELECT 1 FROM tickets t WHERE t.order_id=o.id) AND ${parts.map(() => `${column} LIKE ? ESCAPE '!'`).join(" AND ")} ORDER BY o.created_at DESC,o.id LIMIT 21`,
+      `SELECT o.id,o.first_name,o.last_name,o.phone,o.method,o.mode,o.ticket_label FROM orders o WHERE o.event_id=? AND o.status='paid' AND o.voided_at IS NULL AND o.is_test=0 AND (?=1 OR o.mode='live') AND EXISTS (SELECT 1 FROM tickets t WHERE t.order_id=o.id) AND ${parts.map(() => `${column} LIKE ? ESCAPE '!'`).join(" AND ")} ORDER BY o.created_at DESC,o.id LIMIT 21`,
       eventId,
       allowTest ? 1 : 0,
       ...patterns,
@@ -729,7 +749,7 @@ export async function openStore(
   };
   const ticketForCheckin = async (code, eventId, allowTest) => {
     const t = await get(
-      `SELECT t.*,o.event_id,o.status,o.mode,o.is_test,o.voided_at,o.first_name,o.last_name,o.phone,o.method,e.title FROM tickets t JOIN orders o ON o.id=t.order_id JOIN events e ON e.id=o.event_id WHERE t.code=?`,
+      `SELECT t.*,o.event_id,o.status,o.mode,o.is_test,o.voided_at,o.first_name,o.last_name,o.phone,o.method,o.ticket_label,e.title FROM tickets t JOIN orders o ON o.id=t.order_id JOIN events e ON e.id=o.event_id WHERE t.code=?`,
       code,
     );
     if (!t) throw new AppError(404, "Билет не найден");

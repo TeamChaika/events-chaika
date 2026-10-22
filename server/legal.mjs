@@ -21,7 +21,7 @@ const definitions = [
     "marketing",
     "marketing-consent",
     "Согласие на рекламные СМС",
-    "Хочу получать по СМС новости о мероприятиях и специальные предложения «Гастро Двора» от ООО «БРИЗ».",
+    "Хочу получать по СМС новости о мероприятиях и специальные предложения «Гастро Двора» от ООО «БРИЗ» и предложения о вечеринках от ООО «МРИЯ.ПРО». Даю согласие на передачу номера телефона ООО «МРИЯ.ПРО» для этих рассылок.",
   ],
 ];
 
@@ -30,11 +30,13 @@ const definitions = [
 export const currentLegalDocuments = definitions.map(
   ([slug, file, title, acceptance_label]) => ({
     slug,
-    version: ["privacy", "cookies"].includes(slug)
-      ? "2026-09-29.1"
-      : slug === "terms"
-        ? "2026-09-26.2"
-        : "2026-09-26.1",
+    version: ["privacy", "marketing"].includes(slug)
+      ? "2026-10-22.1"
+      : slug === "cookies"
+        ? "2026-09-29.1"
+        : slug === "terms"
+          ? "2026-09-26.2"
+          : "2026-09-26.1",
     status: "published",
     title,
     acceptance_label,
@@ -124,11 +126,13 @@ export async function legalService(
   );
   return {
     checkoutReady,
-    summary: () => ({
+    summary: (eventId = "red-moon") => ({
       preview,
       checkout_ready: checkoutReady,
-      marketing_ready: marketingReady,
-      documents: visible.map(({ content, ...doc }) => doc),
+      marketing_ready: marketingReady && eventId === "red-moon",
+      documents: visible
+        .filter((doc) => doc.slug !== "marketing" || eventId === "red-moon")
+        .map(({ content, ...doc }) => doc),
     }),
     document: async (slug, hash) => {
       if (
@@ -169,7 +173,12 @@ export async function legalService(
           );
       }
     },
-    validateMarketing: (acceptance) => {
+    validateMarketing: (acceptance, eventId) => {
+      if (acceptance?.accepted === true && eventId !== "red-moon")
+        throw new AppError(
+          400,
+          "Эта рекламная подписка доступна только для вечеринки «Гастро Двора» 31 октября 2026 года",
+        );
       if (
         acceptance?.accepted === true &&
         (!marketingReady || acceptance.hash !== marketingDocument.hash)

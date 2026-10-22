@@ -23,7 +23,12 @@ import {
 } from "lucide-react";
 import { Brand, ErrorNotice, Spinner, Modal, GuestFields } from "./ui";
 import { PaymentSettings } from "./PaymentSettings";
-import { PriceSchedule, PriceBreakdown, usePriceQuote } from "./Pricing";
+import {
+  PriceSchedule,
+  PriceBreakdown,
+  usePriceQuote,
+  TicketOptions,
+} from "./Pricing";
 import { GuestSearch } from "./GuestSearch";
 import { AcceptanceHistory } from "./Legal";
 import { OrderManagement } from "./OrderManagement";
@@ -40,6 +45,7 @@ import {
   type EventData,
 } from "./types";
 type AdminOrder = {
+  ticket_label?: string;
   id: string;
   event_id: string;
   first_name: string;
@@ -595,6 +601,9 @@ export function Admin() {
                             </td>
                             <td>
                               {o.quantity}
+                              {o.ticket_label && (
+                                <small>{o.ticket_label}</small>
+                              )}
                               {o.status === "paid" && (
                                 <small>
                                   Вошли {o.checked_count} из {o.quantity}
@@ -1101,6 +1110,16 @@ function EventEditor({
       published: f.get("published") === "on",
       sales_open: f.get("sales_open") === "on",
       hero_image: heroImage,
+      ...(e?.ticket_options?.length
+        ? {
+            ticket_options: e.ticket_options.map((option) => ({
+              ...option,
+              surcharge: Math.round(
+                Number(f.get(`surcharge_${option.id}`)) * 100,
+              ),
+            })),
+          }
+        : {}),
     };
     try {
       await api("/admin/events" + (e ? "/" + e.id : ""), {
@@ -1244,6 +1263,30 @@ function EventEditor({
             />
           </label>
         </div>
+        {!!e?.ticket_options?.length && (
+          <fieldset>
+            <legend>Варианты билетов</legend>
+            <p className="small-text muted">
+              Общий лимит мест для всех вариантов. Доплата прибавляется к
+              текущей цене билета, в том числе по расписанию цен.
+            </p>
+            {e.ticket_options.map((option, index) => (
+              <label key={option.id}>
+                {option.label} · доплата, ₽
+                <input
+                  name={`surcharge_${option.id}`}
+                  type="number"
+                  min="0"
+                  max="1000000"
+                  step="0.01"
+                  defaultValue={option.surcharge / 100}
+                  readOnly={index === 0}
+                  required
+                />
+              </label>
+            ))}
+          </fieldset>
+        )}
         <label>
           Описание
           <textarea
@@ -1338,7 +1381,16 @@ function IssueForm({
   const key = useRef(crypto.randomUUID());
   const [eventId, setEventId] = useState(events[0]?.id || "");
   const [quantity, setQuantity] = useState(1);
-  const { quote, quoteError, refreshQuote } = usePriceQuote(eventId, quantity);
+  const [ticketOption, setTicketOption] = useState("");
+  const selectedEvent = events.find((event) => event.id === eventId);
+  const selectedOption =
+    ticketOption || selectedEvent?.ticket_options?.[0]?.id || "";
+  const { quote, quoteError, refreshQuote } = usePriceQuote(
+    eventId,
+    quantity,
+    "",
+    selectedOption,
+  );
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (busy || (method === "cash" && !quote)) return;
@@ -1413,7 +1465,10 @@ function IssueForm({
               name="event_id"
               value={eventId}
               disabled={busy}
-              onChange={(e) => setEventId(e.target.value)}
+              onChange={(e) => {
+                setEventId(e.target.value);
+                setTicketOption("");
+              }}
             >
               {events.map((e) => (
                 <option key={e.id} value={e.id}>
@@ -1423,6 +1478,14 @@ function IssueForm({
             </select>
           </label>
           <GuestFields />
+          {selectedEvent && (
+            <TicketOptions
+              event={selectedEvent}
+              value={selectedOption}
+              onChange={setTicketOption}
+              disabled={busy}
+            />
+          )}
           <label>
             Количество
             <input
@@ -1484,6 +1547,7 @@ function IssueForm({
   );
 }
 type EntryResult = {
+  ticket_label?: string;
   accepted: boolean;
   name: string;
   ordinal: number;
@@ -1853,6 +1917,7 @@ function Checkin({
               Заказ на {selection.group.issued} гостей
             </span>
             <h2>{selection.name}</h2>
+            {selection.ticket_label && <p>{selection.ticket_label}</p>}
             <p>{selection.phone}</p>
             <p>
               {wristbands ? "Браслетов выдано" : "Вошли"}{" "}
@@ -1940,6 +2005,7 @@ function Checkin({
                 : "Уже использован"}
             </h2>
             <h3>{result.name}</h3>
+            {result.ticket_label && <p>{result.ticket_label}</p>}
             <p>
               {result.admitted
                 ? wristbands

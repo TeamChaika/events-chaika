@@ -20,6 +20,8 @@ import {
   orderPriceLines,
   pricingUpdateSchema,
   promoCodeSchema,
+  ticketOptionsSchema,
+  ticketOption,
 } from "./pricing.mjs";
 import { channelReady, processOutbox } from "./delivery.mjs";
 import { checkSmsAero } from "./smsaero.mjs";
@@ -60,6 +62,7 @@ const checkinResponse = (t) => ({
   used_at: t.used_at,
   method: t.method,
   mode: t.mode,
+  ticket_label: t.ticket_label,
   group: t.group,
   ...(t.admitted === undefined
     ? {}
@@ -75,6 +78,10 @@ const customerSchema = z.object({
   email: z.email().max(160),
   quantity: z.number().int().min(1).max(10),
   event_id: z.string().min(1).max(80),
+  ticket_option: z
+    .string()
+    .regex(/^[a-z][a-z0-9-]{0,39}$/)
+    .optional(),
 });
 const eventSchema = z.object({
   title: z.string().trim().min(3).max(100),
@@ -85,6 +92,7 @@ const eventSchema = z.object({
   address: z.string().trim().min(2).max(200),
   price: z.number().int().min(100).max(100000000),
   price_tiers: priceTiersSchema.nullable().optional(),
+  ticket_options: ticketOptionsSchema.optional(),
   capacity: z.number().int().min(1).max(100000),
   description: z.string().trim().max(3000),
   dresscode: z.string().max(200),
@@ -363,11 +371,17 @@ export async function createApp({
         throw new AppError(409, "Продажа билетов закрыта");
       if (e.available < quantity)
         throw new AppError(409, "Недостаточно свободных билетов");
-      return store.quote(e.id, quantity, promoCode);
+      const optionId = z
+        .string()
+        .max(40)
+        .parse(req.query.ticket_option || "");
+      return store.quote(e.id, quantity, promoCode, optionId);
     });
     res.json(quote);
   });
-  app.get("/api/legal", (_req, res) => res.json(legal.summary()));
+  app.get("/api/legal", (req, res) =>
+    res.json(legal.summary(req.query.event_id)),
+  );
   app.get("/api/marketing/:token", async (req, res) => {
     res.json(await marketing.status(req.params.token));
   });
@@ -433,6 +447,8 @@ export async function createApp({
       last_name: o.last_name,
       quantity: o.quantity,
       unit_price: o.unit_price,
+      ticket_option: o.ticket_option,
+      ticket_label: o.ticket_label,
       price_breakdown: orderPriceLines(o),
       discount: o.discount_snapshot ? JSON.parse(o.discount_snapshot) : null,
       total: o.total,
@@ -526,7 +542,7 @@ export async function createApp({
         return existing;
       }
       legal.validate(acceptanceInput);
-      legal.validateMarketing(acceptanceInput.marketing);
+      legal.validateMarketing(acceptanceInput.marketing, input.event_id);
       const e = await store.event(input.event_id);
       if (
         !e ||
@@ -543,9 +559,17 @@ export async function createApp({
           503,
           "Оплата пока не подключена. Пожалуйста, вернитесь позже.",
         );
-      const price = await store.quote(e.id, input.quantity, promoCode);
+      const price = await store.quote(
+        e.id,
+        input.quantity,
+        promoCode,
+        input.ticket_option,
+      );
       if (
-        ((e.price_tiers || e.has_price_schedule || promoCode) &&
+        ((e.price_tiers ||
+          e.has_price_schedule ||
+          e.ticket_options.length ||
+          promoCode) &&
           expectedTotal === undefined) ||
         (expectedTotal !== undefined && expectedTotal !== price.total)
       )
@@ -559,10 +583,15 @@ export async function createApp({
         id,
         access_token: token(),
         ...input,
+        ticket_option: price.ticket_option,
+        ticket_label: price.ticket_label,
         unit_price: price.lines[0].unit_price,
         total: price.total,
         price_breakdown:
-          e.price_tiers || e.has_price_schedule || promoCode
+          e.price_tiers ||
+          e.has_price_schedule ||
+          e.ticket_options.length ||
+          promoCode
             ? JSON.stringify(price.lines)
             : null,
         discount_snapshot: price.promo
@@ -649,7 +678,7 @@ export async function createApp({
   });
   app.get("/api/tickets/:code", async (req, res) => {
     const t = await store.get(
-      `SELECT t.code,t.ordinal,t.used_at,t.order_id,o.first_name,o.last_name,o.status,o.mode,o.method,o.event_id,o.voided_at,o.is_test FROM tickets t JOIN orders o ON o.id=t.order_id WHERE code=?`,
+      `SELECT t.code,t.ordinal,t.used_at,t.order_id,o.first_name,o.last_name,o.status,o.mode,o.method,o.event_id,o.voided_at,o.is_test,o.ticket_label FROM tickets t JOIN orders o ON o.id=t.order_id WHERE code=?`,
       req.params.code,
     );
     if (!t) throw new AppError(404, "Билет не найден");
@@ -737,7 +766,7 @@ export async function createApp({
     );
     if (req.staff.role === "door") return res.json({ events });
     const orders = await store.all(
-      "SELECT o.id,o.event_id,o.first_name,o.last_name,o.phone,o.email,o.quantity,o.total,o.status,o.method,o.mode,o.is_test,o.voided_at,o.void_reason,o.created_at,o.paid_at,o.checked_at,o.diagnostic,o.access_token,o.source_label,o.source_path,e.title,(SELECT COUNT(*) FROM tickets t WHERE t.order_id=o.id AND t.used_at IS NOT NULL) AS checked_count FROM orders o JOIN events e ON e.id=o.event_id ORDER BY o.created_at DESC LIMIT 500",
+      "SELECT o.id,o.event_id,o.first_name,o.last_name,o.phone,o.email,o.quantity,o.ticket_label,o.total,o.status,o.method,o.mode,o.is_test,o.voided_at,o.void_reason,o.created_at,o.paid_at,o.checked_at,o.diagnostic,o.access_token,o.source_label,o.source_path,e.title,(SELECT COUNT(*) FROM tickets t WHERE t.order_id=o.id AND t.used_at IS NOT NULL) AS checked_count FROM orders o JOIN events e ON e.id=o.event_id ORDER BY o.created_at DESC LIMIT 500",
     );
     const attendance = await store.get(
       "SELECT COUNT(*) AS sold,COALESCE(SUM(CASE WHEN t.used_at IS NOT NULL THEN 1 ELSE 0 END),0) AS checked FROM tickets t JOIN orders o ON o.id=t.order_id WHERE o.status='paid' AND o.is_test=0 AND (o.voided_at IS NULL OR t.used_at IS NOT NULL) AND (?=1 OR o.mode='live')",
@@ -842,6 +871,7 @@ export async function createApp({
       id,
       ...data,
       price_tiers: data.price_tiers ? JSON.stringify(data.price_tiers) : null,
+      ticket_options: JSON.stringify(data.ticket_options || []),
       published: Number(data.published),
       sales_open: Number(data.sales_open),
       created_at: now(),
@@ -889,6 +919,9 @@ export async function createApp({
         );
       const values = {
         ...data,
+        ...(data.ticket_options === undefined
+          ? {}
+          : { ticket_options: JSON.stringify(data.ticket_options) }),
         ...(data.price_tiers === undefined
           ? {}
           : {
@@ -947,16 +980,22 @@ export async function createApp({
       if (!e) throw new AppError(404, "Мероприятие не найдено");
       if (e.available < input.quantity)
         throw new AppError(409, "Недостаточно мест");
+      let option;
+      try {
+        option = ticketOption(e, input.ticket_option);
+      } catch (error) {
+        throw new AppError(400, error.message);
+      }
       const price =
         method === "invite"
           ? {
               total: 0,
               lines: [{ quantity: input.quantity, unit_price: 0, total: 0 }],
             }
-          : await store.quote(e.id, input.quantity);
+          : await store.quote(e.id, input.quantity, "", input.ticket_option);
       if (
         method === "cash" &&
-        (((e.price_tiers || e.has_price_schedule) &&
+        (((e.price_tiers || e.has_price_schedule || e.ticket_options.length) &&
           expectedTotal === undefined) ||
           (expectedTotal !== undefined && expectedTotal !== price.total))
       )
@@ -970,10 +1009,13 @@ export async function createApp({
         id,
         access_token: token(),
         ...input,
+        ticket_option: option?.id || "",
+        ticket_label: option?.label || "",
         unit_price: price.lines[0].unit_price,
         total: price.total,
         price_breakdown:
-          method !== "invite" && (e.price_tiers || e.has_price_schedule)
+          method !== "invite" &&
+          (e.price_tiers || e.has_price_schedule || e.ticket_options.length)
             ? JSON.stringify(price.lines)
             : null,
         status: "pending",

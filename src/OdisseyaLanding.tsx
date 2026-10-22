@@ -1,8 +1,9 @@
-import { ArrowUpRight, MapPin, Ticket } from "lucide-react";
+import { ArrowDown, ArrowUpRight, MapPin, Ticket, Wine } from "lucide-react";
 import { ContactPhone } from "./ui";
 import { LegalLinks } from "./Legal";
 import { dateLabel, money, eventPath, type EventData } from "./types";
 import "./odisseya.css";
+import { OdisseyaScene } from "./OdisseyaScene";
 
 const courses = [
   [
@@ -62,23 +63,9 @@ export function OdisseyaLanding({
           Предпросмотр · тестовая оплата без списания денег
         </div>
       )}
-      <main>
+      <main className="odisseya-page">
         <section className="odisseya-hero" aria-labelledby="odisseya-title">
-          <picture className="odisseya-world" aria-hidden="true">
-            <source
-              media="(max-width: 760px)"
-              srcSet="/assets/odisseya-world-mobile.jpg"
-            />
-            <img
-              src="/assets/odisseya-world.jpg"
-              alt=""
-              width="1536"
-              height="1024"
-              fetchPriority="high"
-            />
-          </picture>
           <header className="odisseya-header">
-            <a href="#odisseya-menu">Меню вечера</a>
             <a
               className="odisseya-brand"
               href={eventPath(event)}
@@ -87,53 +74,79 @@ export function OdisseyaLanding({
               <strong>ЛИВАДИЯ</strong>
               <span>РЕСТОРАН ГРЕЧЕСКОЙ КУХНИ</span>
             </a>
-            <a href="#odisseya-location">Место встречи</a>
+            <nav aria-label="О вечере">
+              <a href="#odisseya-menu">Меню вечера</a>
+              <a href="#odisseya-location">Место встречи</a>
+            </nav>
+            <a className="odisseya-header-ticket" href="#odisseya-tickets">
+              Выбрать билет <ArrowUpRight size={17} aria-hidden="true" />
+            </a>
           </header>
           <div className="odisseya-copy">
-            <p className="odisseya-date">
-              <strong>{Number(event.date.slice(-2))}</strong>
+            <p className="odisseya-kicker">{event.subtitle} · Ялта</p>
+            <h1 id="odisseya-title">{event.title}</h1>
+            <p className="odisseya-lead">
+              Шесть историй. Шесть курсов.
+              <br />
+              <em>Одна дорога домой.</em>
+            </p>
+            <div className="odisseya-date">
+              <strong>{dateLabel(event.date)}</strong>
               <span>
-                {dateLabel(event.date).replace(/^\d+\s*/, "")}
+                {event.time}
                 <small>
-                  {new Date(event.date + "T12:00:00").toLocaleDateString(
-                    "ru-RU",
-                    { weekday: "long" },
-                  )}{" "}
-                  · {event.date.slice(0, 4)}
+                  сбор гостей{event.age >= 0 ? ` · ${event.age}+` : ""}
                 </small>
               </span>
-            </p>
-            <h1 id="odisseya-title">{event.title}</h1>
-            <svg
-              className="odisseya-waves"
-              viewBox="0 0 150 22"
-              aria-hidden="true"
-            >
-              <path
-                d="M0 11C25-7 45 29 74 11S125-7 150 11M14 17C37 3 53 29 77 17S117 3 138 17"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.3"
-              />
-            </svg>
-            <p className="odisseya-subtitle">{event.subtitle}</p>
-            <div className="odisseya-rule" aria-hidden="true" />
-            <p className="odisseya-tagline">
-              Шесть историй · Шесть курсов
-              <br />
-              <em>Одна дорога домой</em>
-            </p>
+            </div>
             <div className="odisseya-booking">
               {buyButton}
               <span>
-                <strong>{money(event.price)}</strong>
+                <strong>
+                  {event.ticket_options?.length ? "от " : ""}
+                  {money(event.price)}
+                </strong>
                 <small>за одного гостя</small>
               </span>
             </div>
-            <p className="odisseya-arrival">
-              Сбор гостей в {event.time}
-              {event.age >= 0 ? ` · ${event.age}+` : ""}
+            <a className="odisseya-discover" href="#odisseya-menu">
+              <ArrowDown size={16} aria-hidden="true" /> Отправиться в
+              путешествие
+            </a>
+          </div>
+          <div className="odisseya-visual">
+            <img
+              className="odisseya-world"
+              src="/assets/odisseya-yalta-poster.jpg"
+              alt=""
+              width="1280"
+              height="720"
+              fetchPriority="high"
+            />
+            <OdisseyaScene />
+          </div>
+          <span className="odisseya-art-caption">
+            Ливадия / {event.date.slice(0, 4)}
+          </span>
+        </section>
+        <section className="odisseya-prologue" aria-label="О спектакле">
+          <span className="odisseya-prologue-index">01 / ВЕЧЕР</span>
+          <p>
+            В этот вечер
+            <br />
+            <em>мифы оживают.</em>
+          </p>
+          <div>
+            <span className="odisseya-kicker">
+              Театр встречается с гастрономией
+            </span>
+            <p>
+              От первого курса до последнего акта — путешествие по историям
+              Одиссея за столом «Ливадии».
             </p>
+            <a href="#odisseya-menu">
+              Узнать меню <ArrowDown size={15} aria-hidden="true" />
+            </a>
           </div>
         </section>
         <section
@@ -142,13 +155,20 @@ export function OdisseyaLanding({
           aria-labelledby="odisseya-menu-title"
         >
           <div className="odisseya-section-heading">
-            <p className="odisseya-kicker">Вкус каждой истории</p>
+            <p className="odisseya-kicker">02 / Меню путешествия</p>
             <h2 id="odisseya-menu-title">
-              Шесть остановок.
+              Море историй.
               <br />
-              <em>Одно путешествие.</em>
+              <em>Шесть вкусов.</em>
             </h2>
-            <p>Меню гастрономического спектакля</p>
+            <p>
+              Каждый курс — новая глава.
+              <br />
+              От отправления до возвращения домой.
+            </p>
+            <span className="odisseya-menu-count" aria-hidden="true">
+              06
+            </span>
           </div>
           <ol>
             {courses.map(([title, dish, details], i) => (
@@ -164,44 +184,106 @@ export function OdisseyaLanding({
           </ol>
         </section>
         <section
+          id="odisseya-tickets"
+          className="odisseya-tickets"
+          aria-labelledby="odisseya-tickets-title"
+        >
+          <div className="odisseya-ticket-heading">
+            <p className="odisseya-kicker">03 / Ваше приглашение</p>
+            <h2 id="odisseya-tickets-title">
+              Место в этой
+              <br />
+              <em>истории — ваше.</em>
+            </h2>
+            <p>
+              {dateLabel(event.date)} · {event.time} · {event.venue}
+            </p>
+          </div>
+          <div className="odisseya-ticket-choices">
+            {(event.ticket_options?.length
+              ? event.ticket_options
+              : [
+                  {
+                    id: "standard",
+                    label: "Гастрономический спектакль",
+                    surcharge: 0,
+                  },
+                ]
+            ).map((option) => (
+              <article
+                key={option.id}
+                className={
+                  option.surcharge
+                    ? "odisseya-ticket-choice with-wine"
+                    : "odisseya-ticket-choice"
+                }
+              >
+                {option.surcharge ? (
+                  <Wine size={24} strokeWidth={1.25} aria-hidden="true" />
+                ) : (
+                  <Ticket size={24} strokeWidth={1.25} aria-hidden="true" />
+                )}
+                <h3>{option.label}</h3>
+                <p>
+                  Шесть курсов и спектакль
+                  {option.surcharge
+                    ? ", дополненные винным сопровождением."
+                    : "."}
+                </p>
+                <div className="odisseya-option-price">
+                  <strong>{money(event.price + option.surcharge)}</strong>
+                  <span>за одного гостя</span>
+                </div>
+              </article>
+            ))}
+            <div className="odisseya-tickets-action">
+              {buyButton}
+              <span>Вариант и количество гостей — на следующем шаге</span>
+            </div>
+          </div>
+        </section>
+        <section
           id="odisseya-location"
           className="odisseya-location"
           aria-labelledby="odisseya-location-title"
         >
-          <p className="odisseya-kicker">Место встречи</p>
-          <h2 id="odisseya-location-title">{event.venue}</h2>
-          <p>Ресторан греческой кухни</p>
-          <a
-            href={
-              "https://yandex.ru/maps/?text=" +
-              encodeURIComponent(event.address)
-            }
-            target="_blank"
-            rel="noreferrer"
-          >
-            <MapPin size={18} aria-hidden="true" />
-            {event.address}
-            <ArrowUpRight size={16} aria-hidden="true" />
-          </a>
-          <ContactPhone phone={event.contact_phone || ""} />
-          {event.dresscode && <p>Дресс-код: {event.dresscode}</p>}
-          <p>
-            {dateLabel(event.date)} · Сбор гостей в {event.time}
-          </p>
-          <div className="odisseya-booking">
-            {buyButton}
-            <strong>{money(event.price)}</strong>
+          <div className="odisseya-location-title">
+            <p className="odisseya-kicker">04 / Встречаемся у моря</p>
+            <h2 id="odisseya-location-title">{event.venue}</h2>
+            <p>Ресторан греческой кухни</p>
+          </div>
+          <div className="odisseya-location-details">
+            <a
+              href={
+                "https://yandex.ru/maps/?text=" +
+                encodeURIComponent(event.address)
+              }
+              target="_blank"
+              rel="noreferrer"
+            >
+              <MapPin size={18} aria-hidden="true" />
+              {event.address}
+              <ArrowUpRight size={16} aria-hidden="true" />
+            </a>
+            <ContactPhone phone={event.contact_phone || ""} />
+            {event.dresscode && <p>Дресс-код: {event.dresscode}</p>}
+            <p>
+              {dateLabel(event.date)} · Сбор гостей в {event.time}
+            </p>
           </div>
         </section>
       </main>
       <footer className="odisseya-footer">
         <span>ООО «БРИЗ» · ИНН 9103090740</span>
-        <LegalLinks />
+        <LegalLinks marketing={false} />
         <a href="mailto:event@chaika.team">event@chaika.team</a>
       </footer>
       <div className="odisseya-mobile-buy">
         <span>
-          <strong>{money(event.price)}</strong>
+          <strong>
+            {event.ticket_options?.length ? "от " : ""}
+            {money(event.price)}
+          </strong>
           <small>за одного гостя</small>
         </span>
         {buyButton}

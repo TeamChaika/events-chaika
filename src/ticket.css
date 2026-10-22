@@ -497,3 +497,9 @@
     border-color: #bbb;
   }
 }
+.ticket-option-label {
+  font-size: 16px;
+  font-weight: 700;
+  padding: 12px 0;
+  border-block: 1px solid currentColor;
+}

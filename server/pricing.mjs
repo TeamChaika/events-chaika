@@ -2,6 +2,33 @@ import { z } from "zod";
 import { createHash } from "node:crypto";
 
 const moneySchema = z.number().int().min(100).max(100000000);
+export const ticketOptionsSchema = z
+  .array(
+    z.object({
+      id: z.string().regex(/^[a-z][a-z0-9-]{0,39}$/),
+      label: z.string().trim().min(2).max(100),
+      surcharge: z.number().int().min(0).max(100000000),
+    }),
+  )
+  .max(10)
+  .refine(
+    (rows) =>
+      (!rows.length || rows[0].surcharge === 0) &&
+      new Set(rows.map((row) => row.id)).size === rows.length,
+    "Первый вариант — без доплаты; идентификаторы вариантов не должны повторяться",
+  );
+export const readTicketOptions = (raw) =>
+  ticketOptionsSchema.parse(
+    raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : [],
+  );
+
+export function ticketOption(event, id = "") {
+  const options = readTicketOptions(event.ticket_options);
+  const selected = id ? options.find((option) => option.id === id) : options[0];
+  if (id && !selected)
+    throw new Error("Вариант билета не найден для этого мероприятия");
+  return selected || null;
+}
 export const priceScheduleSchema = z
   .array(
     z.object({

@@ -17,7 +17,7 @@ import {
   Download,
   LoaderCircle,
 } from "lucide-react";
-import { usePriceQuote, PriceBreakdown } from "./Pricing";
+import { usePriceQuote, PriceBreakdown, TicketOptions } from "./Pricing";
 import { Admin } from "./Admin";
 import { Team } from "./Team";
 import {
@@ -462,10 +462,14 @@ function Checkout({
   const key = useRef(crypto.randomUUID());
   const [promoInput, setPromoInput] = useState("");
   const [promoCode, setPromoCode] = useState("");
+  const [ticketOption, setTicketOption] = useState(
+    event.ticket_options?.[0]?.id || "",
+  );
   const { quote, quoteError, refreshQuote } = usePriceQuote(
     event.id,
     quantity,
     promoCode,
+    ticketOption,
   );
   const [legal, setLegal] = useState<LegalCatalog>();
   const [legalError, setLegalError] = useState("");
@@ -479,7 +483,11 @@ function Checkout({
     setLegalError("");
     setAccepted({ terms: false, consent: false, marketing: false });
     try {
-      setLegal(await api<LegalCatalog>("/legal"));
+      setLegal(
+        await api<LegalCatalog>(
+          "/legal?" + new URLSearchParams({ event_id: event.id }),
+        ),
+      );
     } catch (e) {
       setLegalError((e as Error).message);
     }
@@ -513,6 +521,7 @@ function Checkout({
           ...Object.fromEntries(form),
           event_id: event.id,
           quantity,
+          ...(ticketOption ? { ticket_option: ticketOption } : {}),
           expected_total: quote.total,
           ...(promoCode ? { promo_code: promoCode } : {}),
           attribution: orderAttribution(event.id),
@@ -554,13 +563,19 @@ function Checkout({
       </div>
       <form onSubmit={submit}>
         <GuestFields />
+        <TicketOptions
+          event={event}
+          value={ticketOption}
+          onChange={setTicketOption}
+          disabled={loading}
+        />
         <div className="quantity-row">
           <div>
             <strong>Количество билетов</strong>
             <span>
               {event.price_tiers
                 ? "Стоимость зависит от ценовой ступени"
-                : `${money(event.price)} за гостя`}
+                : `${money(event.price + (event.ticket_options?.find((option) => option.id === ticketOption)?.surcharge || 0))} за гостя`}
             </span>
           </div>
           <div className="stepper">
@@ -653,7 +668,7 @@ function Checkout({
             const doc = legal?.documents.find((item) => item.slug === slug);
             if (
               slug === "marketing" &&
-              (!legal?.marketing_ready || event.layout === "odisseya")
+              (!legal?.marketing_ready || event.id !== "red-moon")
             )
               return null;
             return (
@@ -699,7 +714,7 @@ function Checkout({
                     {" · "}
                   </React.Fragment>
                 ))}
-              {event.layout !== "odisseya" &&
+              {event.id === "red-moon" &&
                 "Рекламная подписка добровольная. От неё можно отказаться в любое время."}
             </p>
           )}
@@ -894,6 +909,7 @@ function OrderPage() {
                     name={`${order.first_name} ${order.last_name}`}
                     demo={order.mode !== "live"}
                     quantity={order.quantity}
+                    ticketLabel={order.ticket_label}
                   />
                 ))}
               </div>
@@ -942,6 +958,7 @@ function OrderPage() {
                 {order.event.title} · {order.quantity} бил. ·{" "}
                 {money(order.total)}
               </p>
+              {order.ticket_label && <p>{order.ticket_label}</p>}
               {order.status === "pending" && (
                 <>
                   {order.mode === "demo" ? (

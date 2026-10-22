@@ -1,14 +1,21 @@
 import { useEffect, useState } from "react";
-import { api, money, type PriceQuote, type PriceTier } from "./types";
+import {
+  api,
+  money,
+  type EventData,
+  type PriceQuote,
+  type PriceTier,
+} from "./types";
 import "./pricing.css";
 
 export function usePriceQuote(
   eventId: string,
   quantity: number,
   promoCode = "",
+  ticketOption = "",
 ) {
   const [revision, setRevision] = useState(0);
-  const requestKey = `${eventId}:${quantity}:${promoCode}:${revision}`;
+  const requestKey = `${eventId}:${quantity}:${promoCode}:${ticketOption}:${revision}`;
   const [state, setState] = useState<{
     key: string;
     quote?: PriceQuote;
@@ -17,7 +24,12 @@ export function usePriceQuote(
   useEffect(() => {
     const controller = new AbortController();
     api<PriceQuote>(
-      `/events/${encodeURIComponent(eventId)}/quote?quantity=${quantity}${promoCode ? `&promo_code=${encodeURIComponent(promoCode)}` : ""}`,
+      `/events/${encodeURIComponent(eventId)}/quote?` +
+        new URLSearchParams({
+          quantity: String(quantity),
+          ...(promoCode ? { promo_code: promoCode } : {}),
+          ...(ticketOption ? { ticket_option: ticketOption } : {}),
+        }),
       { signal: controller.signal },
     )
       .then((quote) => setState({ key: requestKey, quote }))
@@ -26,12 +38,48 @@ export function usePriceQuote(
           setState({ key: requestKey, error: (error as Error).message });
       });
     return () => controller.abort();
-  }, [eventId, quantity, promoCode, requestKey]);
+  }, [eventId, quantity, promoCode, ticketOption, requestKey]);
   return {
     quote: state?.key === requestKey ? state.quote : undefined,
     quoteError: state?.key === requestKey ? state.error : undefined,
     refreshQuote: () => setRevision((value) => value + 1),
   };
+}
+
+export function TicketOptions({
+  event,
+  value,
+  onChange,
+  disabled = false,
+}: {
+  event: EventData;
+  value: string;
+  onChange: (id: string) => void;
+  disabled?: boolean;
+}) {
+  if (!event.ticket_options?.length) return null;
+  return (
+    <fieldset className="ticket-options" disabled={disabled}>
+      <legend>Вариант билета</legend>
+      {event.ticket_options.map((option) => (
+        <label
+          key={option.id}
+          className={value === option.id ? "selected" : ""}
+        >
+          <input
+            type="radio"
+            name="ticket_option"
+            value={option.id}
+            checked={value === option.id}
+            onChange={() => onChange(option.id)}
+          />
+          <span>{option.label}</span>
+          <strong>{money(event.price + option.surcharge)}</strong>
+        </label>
+      ))}
+      <small>Выбранный вариант — для всех гостей в этом заказе.</small>
+    </fieldset>
+  );
 }
 
 export function PriceBreakdown({ quote }: { quote?: PriceQuote }) {

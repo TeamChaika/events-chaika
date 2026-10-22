@@ -8,12 +8,14 @@ export function TicketCard({
   name,
   demo,
   quantity,
+  ticketLabel,
 }: {
   ticket: TicketData;
   event: EventData;
   name: string;
   demo: boolean;
   quantity?: number;
+  ticketLabel?: string;
 }) {
   const redMoon = event.id === "red-moon";
   const venue = event.venue === "Гастродвор" ? "Гастро Двор" : event.venue;
@@ -55,6 +57,11 @@ export function TicketCard({
         <p className="ticket-tagline">
           {redMoon ? "КРАСНАЯ ЛУНА. ИНАЯ РЕАЛЬНОСТЬ." : event.subtitle}
         </p>
+        {(ticketLabel || ticket.ticket_label) && (
+          <p className="ticket-option-label">
+            {ticketLabel || ticket.ticket_label}
+          </p>
+        )}
         <div className="ticket-schedule">
           <div>
             <span>ДАТА</span>

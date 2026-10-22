@@ -166,7 +166,10 @@ export async function createPayment(
     merchant.is_nomenclature
       ? {
           nomenclature: lines.map((line) => ({
-            name: `Билет: ${event.title}`.slice(0, 100),
+            name: `Билет: ${event.title}${order.ticket_label ? ` · ${order.ticket_label}` : ""}`.slice(
+              0,
+              100,
+            ),
             count: line.quantity,
             price: line.unit_price,
             amount: line.total,

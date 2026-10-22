@@ -3779,3 +3779,250 @@ test("invalid codes and invalid price rules cannot create a payable order or exp
   await h.login("door");
   assert.equal((await h.request("/admin/events/red-moon/pricing")).status, 403);
 });
+
+const wineOptions = [
+  { id: "standard", label: "Без винного сопровождения", surcharge: 0 },
+  { id: "wine", label: "С винным сопровождением", surcharge: 200000 },
+];
+async function wineEvent(h) {
+  await h.login();
+  const base = await h.store.event("red-moon");
+  const created = await h.request("/admin/events", {
+    method: "POST",
+    body: {
+      ...base,
+      title: "Одиссея",
+      price: 800000,
+      price_tiers: null,
+      capacity: 60,
+      layout: "odisseya",
+      ticket_options: wineOptions,
+      published: true,
+      sales_open: true,
+    },
+  });
+  assert.equal(created.status, 201);
+  return created.body;
+}
+
+test("ticket variants share 60 seats and reject unknown variants and tampered prices", async (t) => {
+  const h = await harness(t);
+  const e = await wineEvent(h);
+  for (let i = 0; i < 6; i++) {
+    const option = i % 2 ? "wine" : "standard";
+    const unit = option === "wine" ? 1000000 : 800000;
+    const quote = await h.request(
+      `/events/${e.id}/quote?quantity=10&ticket_option=${option}`,
+    );
+    assert.equal(quote.body.total, unit * 10);
+    const order = await h.order({
+      ...guest,
+      event_id: e.id,
+      quantity: 10,
+      ticket_option: option,
+      expected_total: quote.body.total,
+    });
+    assert.equal(order.status, 201);
+    assert.equal(order.body.ticket_option, option);
+  }
+  assert.equal((await h.store.event(e.id)).available, 0);
+  assert.equal(
+    (
+      await h.order({
+        ...guest,
+        event_id: e.id,
+        quantity: 1,
+        ticket_option: "wine",
+        expected_total: 1000000,
+      })
+    ).status,
+    409,
+  );
+  assert.equal(
+    (await h.request(`/events/${e.id}/quote?quantity=1&ticket_option=wine`))
+      .status,
+    409,
+  );
+  // A category belonging to another event never changes Red Moon pricing.
+  assert.equal(
+    (await h.order({ ...guest, ticket_option: "wine" })).status,
+    400,
+  );
+});
+
+test("wine choice freezes its price and label through payment, delivery, scanner and idempotent retries", async (t) => {
+  const h = await harness(t);
+  const e = await wineEvent(h);
+  const body = {
+    ...guest,
+    event_id: e.id,
+    ticket_option: "wine",
+    expected_total: 2000000,
+  };
+  assert.equal(
+    (await h.order({ ...body, expected_total: 1600000 })).body.code,
+    "PRICE_CHANGED",
+  );
+  assert.equal((await h.order({ ...body, ticket_option: "fake" })).status, 400);
+  const key = randomUUID();
+  const made = await h.order(
+    { ...body, ticket_label: "fake", unit_price: 1 },
+    key,
+  );
+  assert.equal(made.status, 201);
+  assert.equal(made.body.ticket_label, wineOptions[1].label);
+  assert.equal(made.body.total, 2000000);
+  assert.equal(
+    (await h.order({ ...body, ticket_option: "standard" }, key)).status,
+    409,
+  );
+  await h.store.run(
+    "UPDATE events SET ticket_options=? WHERE id=?",
+    JSON.stringify([
+      { ...wineOptions[0] },
+      { ...wineOptions[1], label: "Новая подпись", surcharge: 300000 },
+    ]),
+    e.id,
+  );
+  assert.equal((await h.order(body, key)).body.id, made.body.id);
+  await h.store.markPaid(made.body.id);
+  const ticket = await h.store.get(
+    "SELECT code FROM tickets WHERE order_id=?",
+    made.body.id,
+  );
+  assert.equal(
+    (await h.request(`/tickets/${ticket.code}`)).body.ticket_label,
+    wineOptions[1].label,
+  );
+  assert.equal(
+    (
+      await h.request("/checkin/preview", {
+        method: "POST",
+        body: { event_id: e.id, code: ticket.code },
+      })
+    ).body.ticket_label,
+    wineOptions[1].label,
+  );
+  const stored = await h.store.get(
+    "SELECT * FROM orders WHERE id=?",
+    made.body.id,
+  );
+  assert.equal(stored.total, 2000000);
+  const { telegramOrderText } = await import("../server/delivery.mjs");
+  assert.match(
+    telegramOrderText(stored, e, [], null, origin),
+    /С винным сопровождением/,
+  );
+  const legacyEvent = {
+    ...e,
+    published: true,
+    sales_open: true,
+    price: e.base_price,
+  };
+  delete legacyEvent.ticket_options;
+  assert.equal(
+    (
+      await h.request(`/admin/events/${e.id}`, {
+        method: "PUT",
+        body: legacyEvent,
+      })
+    ).body.ticket_options[1].surcharge,
+    300000,
+  );
+});
+
+test("wine pricing applies scheduled base plus supplement and per-ticket promo; cash and invites retain the variant", async (t) => {
+  const h = await harness(t);
+  const e = await wineEvent(h);
+  await h.store.run(
+    "UPDATE events SET price_schedule=?,promo_codes=? WHERE id=?",
+    JSON.stringify([{ starts_at: "2020-01-01T00:00:00Z", price: 900000 }]),
+    JSON.stringify([
+      { code: "FIVE", kind: "percent", value: 500, active: true },
+    ]),
+    e.id,
+  );
+  const quote = (
+    await h.request(
+      `/events/${e.id}/quote?quantity=2&ticket_option=wine&promo_code=FIVE`,
+    )
+  ).body;
+  assert.equal(quote.subtotal, 2200000);
+  assert.equal(quote.total, 2090000);
+  assert.equal(quote.discount_total, 110000);
+  for (const method of ["cash", "invite"]) {
+    const issue = await h.request("/admin/issue", {
+      method: "POST",
+      key: randomUUID(),
+      body: {
+        ...guest,
+        event_id: e.id,
+        ticket_option: "wine",
+        method,
+        cash_received: true,
+        expected_total: method === "cash" ? 2200000 : 0,
+      },
+    });
+    assert.equal(issue.status, 201);
+    const order = await h.store.get(
+      "SELECT * FROM orders WHERE access_token=?",
+      issue.body.url.split("/").pop(),
+    );
+    assert.equal(order.ticket_label, wineOptions[1].label);
+    assert.equal(order.total, method === "cash" ? 2200000 : 0);
+  }
+});
+
+test("Mriya marketing opt-in is event-scoped; old evidence is immutable and cannot grant new permission", async (t) => {
+  const h = await harness(t);
+  const e = await wineEvent(h);
+  const other = (await h.request(`/legal?event_id=${e.id}`)).body;
+  assert.equal(other.marketing_ready, false);
+  assert.ok(!other.documents.some((doc) => doc.slug === "marketing"));
+  assert.equal(
+    (
+      await h.order(
+        marketingBody(h, { event_id: e.id, expected_total: 1600000 }),
+      )
+    ).status,
+    400,
+  );
+  const { legalService } = await import("../server/legal.mjs");
+  const saved = await h.order(marketingBody(h));
+  assert.equal(saved.status, 201);
+  const before = await h.store.get(
+    "SELECT * FROM sms_consents WHERE order_id=?",
+    saved.body.id,
+  );
+  const updated = await legalService(h.store, {
+    demo: true,
+    documents: fixtureLegalDocuments.map((doc) =>
+      doc.slug === "marketing"
+        ? {
+            ...doc,
+            version: "fixture.2",
+            content: doc.content + " New Mriya consent.",
+          }
+        : doc,
+    ),
+  });
+  assert.throws(
+    () =>
+      updated.validateMarketing(
+        { accepted: true, hash: before.document_hash },
+        "red-moon",
+      ),
+    { status: 409 },
+  );
+  assert.deepEqual(
+    await h.store.get(
+      "SELECT * FROM sms_consents WHERE order_id=?",
+      saved.body.id,
+    ),
+    before,
+  );
+  assert.equal(
+    (await updated.document("marketing", before.document_hash)).version,
+    "fixture.1",
+  );
+});

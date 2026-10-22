@@ -58,7 +58,7 @@ export function telegramOrderText(order, event, tickets, sms, origin) {
     order.status === "paid" && tickets.length
       ? `\n\nБилет на весь заказ для пересылки гостю:\n${origin}/ticket/${tickets[0].code}`
       : "";
-  return `${event.title}\n${order.first_name} ${order.last_name}\n${order.phone}\nБилетов: ${order.quantity} · ${(order.total / 100).toLocaleString("ru-RU")} ₽\nСпособ: ${{ sbp: "СБП", cash: "Наличные", invite: "Пригласительный" }[order.method] || order.method}\nСтатус: ${status}\n${tickets.length ? `Билеты выпущены: ${tickets.length}` : "Билеты ещё не выпущены"}\n${smsStatus}\nИсточник: ${order.source_label || "Не определён"}${order.source_path ? ` · ${order.source_path}` : ""}\nЗаказ: ${order.id.slice(0, 8)}${links}`;
+  return `${event.title}\n${order.first_name} ${order.last_name}\n${order.phone}\n${order.ticket_label ? `Вариант: ${order.ticket_label}\n` : ""}Билетов: ${order.quantity} · ${(order.total / 100).toLocaleString("ru-RU")} ₽\nСпособ: ${{ sbp: "СБП", cash: "Наличные", invite: "Пригласительный" }[order.method] || order.method}\nСтатус: ${status}\n${tickets.length ? `Билеты выпущены: ${tickets.length}` : "Билеты ещё не выпущены"}\n${smsStatus}\nИсточник: ${order.source_label || "Не определён"}${order.source_path ? ` · ${order.source_path}` : ""}\nЗаказ: ${order.id.slice(0, 8)}${links}`;
 }
 export async function deliver(job, order, event, tickets, origin, sms) {
   if (job.channel === "email") {
@@ -86,8 +86,8 @@ export async function deliver(job, order, event, tickets, origin, sms) {
       from: process.env.MAIL_FROM,
       to: order.email,
       subject: `Ваш билет · ${event.title}`,
-      text: `${order.first_name}, ваш билет: ${event.title}, ${event.date} в ${event.time}, ${event.venue}. Количество гостей: ${order.quantity}. Один QR-код на весь заказ; гости могут приходить отдельно. Открыть: ${link}`,
-      html: `<div style="font-family:Arial;max-width:560px;margin:auto"><h1>${escape(event.title)}</h1><p>${escape(order.first_name)}, до встречи ${escape(event.date)} в ${escape(event.time)}!</p><p>${escape(event.venue)} · ${escape(event.address)}</p><h3>Количество гостей: ${order.quantity}</h3><img width="240" alt="QR билета на весь заказ" src="cid:ticket"/><p><a href="${link}">Открыть билет</a></p><p>Один QR-код на весь заказ. Гости могут приходить отдельно: контролёр отметит количество пришедших.</p></div>`,
+      text: `${order.first_name}, ваш билет: ${event.title}, ${event.date} в ${event.time}, ${event.venue}. ${order.ticket_label ? `Вариант: ${order.ticket_label}. ` : ""}Количество гостей: ${order.quantity}. Один QR-код на весь заказ; гости могут приходить отдельно. Открыть: ${link}`,
+      html: `<div style="font-family:Arial;max-width:560px;margin:auto"><h1>${escape(event.title)}</h1><p>${escape(order.first_name)}, до встречи ${escape(event.date)} в ${escape(event.time)}!</p><p>${escape(event.venue)} · ${escape(event.address)}</p>${order.ticket_label ? `<p>${escape(order.ticket_label)}</p>` : ""}<h3>Количество гостей: ${order.quantity}</h3><img width="240" alt="QR билета на весь заказ" src="cid:ticket"/><p><a href="${link}">Открыть билет</a></p><p>Один QR-код на весь заказ. Гости могут приходить отдельно: контролёр отметит количество пришедших.</p></div>`,
       attachments,
     });
     if (!info.accepted?.length) throw new Error("email_rejected");

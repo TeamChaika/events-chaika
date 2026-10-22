@@ -38,14 +38,16 @@ const links = [
   ["marketing", "Рекламные СМС"],
 ];
 
-export function LegalLinks() {
+export function LegalLinks({ marketing = true }: { marketing?: boolean }) {
   return (
     <nav className="legal-links" aria-label="Документы сайта">
-      {links.map(([slug, title]) => (
-        <a key={slug} href={`/legal/${slug}`}>
-          {title}
-        </a>
-      ))}
+      {links
+        .filter(([slug]) => marketing || slug !== "marketing")
+        .map(([slug, title]) => (
+          <a key={slug} href={`/legal/${slug}`}>
+            {title}
+          </a>
+        ))}
       <a
         href="/?cookies=settings"
         onClick={(event) => {
