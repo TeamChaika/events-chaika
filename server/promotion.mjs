@@ -33,6 +33,7 @@ const reserved = new Set([
   "unsubscribe",
   "assets",
   "media",
+  "e",
 ]);
 
 export function isPromotionPath(path) {

@@ -33,6 +33,7 @@ import {
   statusLabel,
   type EventData,
   type Config,
+  eventPath,
   type OrderData,
   type TicketData,
 } from "./types";
@@ -121,7 +122,9 @@ function Home() {
     new URLSearchParams(location.search).get("event"),
   );
   const pathParts = location.pathname.split("/").filter(Boolean);
-  const referral = pathParts.length === 2;
+  const shortSlug =
+    pathParts.length === 2 && pathParts[0] === "e" ? pathParts[1] : null;
+  const referral = pathParts.length === 2 && !shortSlug;
   const event = selected ? events.find((e) => e.id === selected) : events[0];
   useEffect(watchAttributionChoice, []);
   useEffect(() => {
@@ -161,7 +164,13 @@ function Home() {
             "/?" + new URLSearchParams({ event: source.event_id }),
           );
         }
-        const wanted = source?.event_id || selected;
+        const shortEvent = shortSlug
+          ? e.find((event) => event.public_slug === shortSlug)
+          : null;
+        if (shortSlug && !shortEvent)
+          throw new Error("Мероприятие не найдено или снято с публикации.");
+        if (shortEvent) setSelected(shortEvent.id);
+        const wanted = shortEvent?.id || source?.event_id || selected;
         if (wanted && !e.some((event) => event.id === wanted))
           throw new Error("Мероприятие не найдено или снято с публикации.");
         const chosen = wanted || e[0]?.id;
@@ -832,14 +841,7 @@ function OrderPage() {
           ) : (
             <Brand />
           )}
-          <a
-            href={
-              order
-                ? "/?" + new URLSearchParams({ event: order.event.id })
-                : "/"
-            }
-            className="text-link"
-          >
+          <a href={order ? eventPath(order.event) : "/"} className="text-link">
             <ChevronLeft size={16} />
             На афишу
           </a>
@@ -993,10 +995,7 @@ function OrderPage() {
                 </p>
               )}
               {["expired", "cancelled", "failed"].includes(order.status) && (
-                <a
-                  href={"/?" + new URLSearchParams({ event: order.event.id })}
-                  className="button secondary"
-                >
+                <a href={eventPath(order.event)} className="button secondary">
                   Вернуться к мероприятию
                 </a>
               )}

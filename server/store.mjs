@@ -357,7 +357,10 @@ export async function openStore(
     }
   };
   const event = async (id) => {
-    const e = await get("SELECT * FROM events WHERE id=?", id);
+    const e = await get(
+      "SELECT e.*,a.slug AS public_slug FROM events e LEFT JOIN promotion_events a ON a.event_id=e.id WHERE e.id=?",
+      id,
+    );
     if (!e) return null;
     const tiers = readTiers(e.price_tiers);
     const { promo_codes: _privatePromos, ...publicEvent } = e;

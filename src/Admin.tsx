@@ -31,6 +31,7 @@ import { AdminPricing } from "./AdminPricing";
 import { StaffAccounts } from "./StaffAccounts";
 import {
   api,
+  eventPath,
   ApiError,
   money,
   dateLabel,
@@ -488,7 +489,7 @@ export function Admin() {
                               Редактировать
                             </button>
                             <a
-                              href={"/?event=" + event.id}
+                              href={eventPath(event)}
                               className="icon-button"
                               aria-label={"Открыть " + event.title}
                               target="_blank"

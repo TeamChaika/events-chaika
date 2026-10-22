@@ -1,7 +1,7 @@
 import { ArrowUpRight, MapPin, Ticket } from "lucide-react";
 import { ContactPhone } from "./ui";
 import { LegalLinks } from "./Legal";
-import { dateLabel, money, type EventData } from "./types";
+import { dateLabel, money, eventPath, type EventData } from "./types";
 import "./odisseya.css";
 
 const courses = [
@@ -81,7 +81,7 @@ export function OdisseyaLanding({
             <a href="#odisseya-menu">Меню вечера</a>
             <a
               className="odisseya-brand"
-              href={"/?" + new URLSearchParams({ event: event.id })}
+              href={eventPath(event)}
               aria-label="Ливадия — афиша"
             >
               <strong>ЛИВАДИЯ</strong>

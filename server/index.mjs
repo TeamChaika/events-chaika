@@ -172,7 +172,9 @@ export async function createApp({
   // A short source link renders the same public poster as the homepage.
   // Its document policy survives the client-side canonical URL replacement.
   const analyticsSource = (req) =>
-    req.path === "/" || isPromotionPath(req.path) ? "https://mc.yandex.ru" : "";
+    req.path === "/" || req.path.startsWith("/e/") || isPromotionPath(req.path)
+      ? "https://mc.yandex.ru"
+      : "";
   app.use(
     helmet({
       contentSecurityPolicy: production
@@ -1226,13 +1228,18 @@ export async function createApp({
       dotfiles: "deny",
     }),
   );
-  app.get("/", async (req, res, next) => {
-    if (typeof req.query.event !== "string") return next();
+  app.get(["/", "/e/:slug"], async (req, res, next) => {
+    if (!req.params.slug && typeof req.query.event !== "string") return next();
     const event = await store.get(
-      "SELECT title,subtitle,venue,hero_image FROM events WHERE id=? AND published=1",
-      req.query.event,
+      req.params.slug
+        ? "SELECT e.title,e.subtitle,e.venue,e.hero_image FROM events e JOIN promotion_events a ON a.event_id=e.id WHERE a.slug=? AND e.published=1"
+        : "SELECT title,subtitle,venue,hero_image FROM events WHERE id=? AND published=1",
+      req.params.slug || req.query.event,
     );
-    if (!event) return next();
+    if (!event)
+      return req.params.slug
+        ? res.status(404).sendFile(resolve("dist/index.html"))
+        : next();
     const escape = (value) =>
       String(value).replace(
         /[&<>"']/g,

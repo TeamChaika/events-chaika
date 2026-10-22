@@ -27,6 +27,7 @@ export class ApiError extends Error {
 }
 export type EventData = {
   id: string;
+  public_slug?: string | null;
   title: string;
   subtitle: string;
   date: string;
@@ -48,6 +49,10 @@ export type EventData = {
   layout?: "default" | "odisseya";
   contact_phone?: string;
 };
+export const eventPath = (event: Pick<EventData, "id" | "public_slug">) =>
+  event.public_slug
+    ? `/e/${encodeURIComponent(event.public_slug)}`
+    : "/?" + new URLSearchParams({ event: event.id });
 export type Config = {
   demo: boolean;
   paymentMode: string;

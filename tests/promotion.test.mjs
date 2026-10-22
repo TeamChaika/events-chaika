@@ -8,6 +8,7 @@ import {
   verifyTelegramData,
   ATTRIBUTION_CONSENT_VERSION,
   createGroupAccess,
+  isPromotionPath,
 } from "../server/promotion.mjs";
 
 const botToken = "12345:technical_test_secret";
@@ -576,6 +577,15 @@ test("source links belong to an event, are reusable, and invalid/colliding paths
   assert.equal((await h.link()).status, 409);
   assert.equal((await h.link({ slug: "bad/slash" })).status, 400);
   assert.equal((await h.link({ event_slug: "admin" })).status, 400);
+  assert.equal((await h.link({ event_slug: "e" })).status, 400);
+  assert.equal(isPromotionPath("/e/moon"), false);
+  assert.equal(isPromotionPath("/moon/sunset-tg"), true);
+  assert.equal((await h.store.event("red-moon")).public_slug, "moon");
+  assert.equal(
+    (await h.request("/events")).body.find((e) => e.id === "red-moon")
+      .public_slug,
+    "moon",
+  );
   assert.equal(
     (await h.link({ slug: "other", source_name: "Sunset\nVibes" })).status,
     400,

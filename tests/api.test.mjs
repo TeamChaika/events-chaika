@@ -2641,6 +2641,7 @@ test("production CSP separates public posters, private pages and the Telegram pa
     for (const path of [
       "/",
       "/moon/sunset-tg",
+      "/e/odisseya",
       "/team",
       "/ticket/test",
       "/order/test",
@@ -2654,7 +2655,7 @@ test("production CSP separates public posters, private pages and the Telegram pa
       assert.ok(policy, path);
       assert.equal(
         policy.includes("https://mc.yandex.ru"),
-        path === "/" || path === "/moon/sunset-tg",
+        path === "/" || path === "/moon/sunset-tg" || path === "/e/odisseya",
         path,
       );
       assert.equal(policy.includes("https://telegram.org"), false, path);
