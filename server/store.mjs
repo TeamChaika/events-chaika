@@ -69,6 +69,10 @@ export async function openStore(
       kind TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0,
       next_at INTEGER NOT NULL DEFAULT 0, sent_at TEXT, error TEXT, UNIQUE(order_id,channel,kind));
     CREATE TABLE IF NOT EXISTS audit (id TEXT PRIMARY KEY, action TEXT NOT NULL, entity TEXT NOT NULL, actor TEXT NOT NULL, created_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS payment_accounts (
+      id TEXT PRIMARY KEY CHECK(id='livadia'), encrypted_config TEXT NOT NULL,
+      firm_name TEXT NOT NULL, merchant_id TEXT NOT NULL, requires_receipt INTEGER NOT NULL,
+      updated_at TEXT NOT NULL, updated_by TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS legal_documents (
       hash TEXT PRIMARY KEY, slug TEXT NOT NULL, version TEXT NOT NULL, status TEXT NOT NULL,
       title TEXT NOT NULL, acceptance_label TEXT NOT NULL, content TEXT NOT NULL, UNIQUE(slug,version));
@@ -135,6 +139,7 @@ export async function openStore(
             "staff_sessions",
             "outbox",
             "audit",
+            "payment_accounts",
             "media",
             "legal_documents",
             "order_acceptances",
@@ -173,6 +178,21 @@ export async function openStore(
         ["provider_status", "INTEGER"],
         ["status_attempts", "INTEGER NOT NULL DEFAULT 0"],
       ];
+      for (const [name, type] of [
+        ["payment_account", "TEXT NOT NULL DEFAULT 'default'"],
+        ["layout", "TEXT NOT NULL DEFAULT 'default'"],
+        ["contact_phone", "TEXT NOT NULL DEFAULT ''"],
+      ]) {
+        if (
+          db.kind === "postgres" ||
+          !(await db.all("PRAGMA table_info(events)")).some(
+            (c) => c.name === name,
+          )
+        )
+          await db.exec(
+            `ALTER TABLE events ADD COLUMN ${db.kind === "postgres" ? "IF NOT EXISTS " : ""}${name} ${type}`,
+          );
+      }
       for (const name of ["price_schedule", "promo_codes"]) {
         if (
           db.kind === "postgres" ||
@@ -194,6 +214,7 @@ export async function openStore(
           `ALTER TABLE team_members ADD COLUMN ${db.kind === "postgres" ? "IF NOT EXISTS " : ""}access_group_id TEXT`,
         );
       const orderColumns = [
+        ["payment_account", "TEXT NOT NULL DEFAULT 'default'"],
         ["price_breakdown", "TEXT"],
         ["discount_snapshot", "TEXT"],
         ["is_test", "INTEGER NOT NULL DEFAULT 0"],

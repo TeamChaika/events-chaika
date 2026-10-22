@@ -3,13 +3,14 @@ import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
 import { randomUUID, createHash, timingSafeEqual } from "node:crypto";
 import { resolve, dirname } from "node:path";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import QRCode from "qrcode";
 import { openStore, seed, token, AppError } from "./store.mjs";
 import {
   providerConfig,
+  paymentMode,
   createPayment,
   readStatus,
   checkMerchant,
@@ -26,6 +27,7 @@ import { telegram } from "./telegram.mjs";
 import { legalService } from "./legal.mjs";
 import { marketingService } from "./marketing.mjs";
 import { staffService } from "./staff.mjs";
+import { paymentSettings } from "./payment-settings.mjs";
 import {
   promotionService,
   registerTeamRoutes,
@@ -86,13 +88,20 @@ const eventSchema = z.object({
   capacity: z.number().int().min(1).max(100000),
   description: z.string().trim().max(3000),
   dresscode: z.string().max(200),
-  age: z.number().int().min(0).max(21),
+  age: z.number().int().min(-1).max(21),
+  payment_account: z.enum(["default", "livadia"]).optional(),
+  layout: z.enum(["default", "odisseya"]).optional(),
+  contact_phone: z
+    .string()
+    .trim()
+    .regex(/^(?:|\+?[\d ()-]{10,25})$/)
+    .optional(),
   published: z.boolean(),
   sales_open: z.boolean(),
   hero_image: z
     .string()
     .regex(
-      /^\/(?:assets\/red-moon\.png|media\/[a-f0-9]{48}\.(?:png|jpg|webp))$/,
+      /^\/(?:assets\/(?:red-moon\.png|odisseya\.jpg)|media\/[a-f0-9]{48}\.(?:png|jpg|webp))$/,
     )
     .default("/assets/red-moon.png"),
 });
@@ -127,6 +136,7 @@ export async function createApp({
     throw new Error("DATABASE_URL is required on ephemeral hosting");
   const store = await openStore(dbPath, databaseUrl, demo ? "demo" : "live");
   const staffAccounts = staffService(store, { demo });
+  const payments = paymentSettings(store);
   const marketing = marketingService(store);
   const promotion = promotionService(store, origin);
   let legal;
@@ -169,10 +179,7 @@ export async function createApp({
         ? {
             directives: {
               defaultSrc: ["'self'"],
-              scriptSrc: [
-                "'self'",
-                analyticsSource,
-              ],
+              scriptSrc: ["'self'", analyticsSource],
               styleSrc: ["'self'", "'unsafe-inline'"],
               imgSrc: ["'self'", "data:", "blob:", analyticsSource],
               connectSrc: ["'self'", analyticsSource],
@@ -279,24 +286,38 @@ export async function createApp({
     req.staff?.role === "admin"
       ? next()
       : next(new AppError(403, "Нужен доступ администратора"));
-  const mode = () => (demo ? "demo" : process.env.QRM_MODE || "disabled");
+  const mode = (account = "default") => (demo ? "demo" : paymentMode(account));
   app.get("/api/health", async (_req, res) => {
     await store.get("SELECT 1 AS ready");
     res.json({ ok: true });
   });
-  const availability = () => {
+  const availability = (account = "default") => {
     if (demo) return true;
     try {
-      providerConfig(mode());
+      const config = providerConfig(mode(account), account);
+      if (mode(account) === "live" && !config.merchantId) return false;
       return origin.startsWith("https://");
     } catch {
       return false;
     }
   };
-  app.get("/api/config", (req, res) => {
+  app.get("/api/config", async (req, res) => {
+    const event = req.query.event
+      ? await store.event(z.string().max(80).parse(req.query.event))
+      : null;
+    if (
+      req.query.event &&
+      (!event || (!event.published && req.staff?.role !== "admin"))
+    )
+      throw new AppError(404, "Мероприятие не найдено");
+    const account = await payments.resolve(event?.payment_account || "default");
     if (!/^[a-f0-9]{48}$/.test(cookies(req).buyer || ""))
       setCookie(res, "buyer", token(), 30 * 86400000);
-    res.json({ demo, paymentMode: mode(), paymentReady: availability() });
+    res.json({
+      demo,
+      paymentMode: mode(account),
+      paymentReady: availability(account),
+    });
   });
   app.get("/api/promotion/resolve", async (req, res) =>
     res.json(await promotion.resolve(req.query.event, req.query.source)),
@@ -445,11 +466,6 @@ export async function createApp({
     const promoCode = req.body.promo_code
       ? promoCodeSchema.parse(req.body.promo_code)
       : "";
-    if (!availability())
-      throw new AppError(
-        503,
-        "Оплата пока не подключена. Пожалуйста, вернитесь позже.",
-      );
     const buyer = cookies(req).buyer;
     if (!buyer || !/^[a-f0-9]{48}$/.test(buyer))
       throw new AppError(400, "Обновите страницу перед покупкой");
@@ -519,6 +535,12 @@ export async function createApp({
         throw new AppError(409, "Продажа билетов закрыта");
       if (e.available < input.quantity)
         throw new AppError(409, "Недостаточно свободных билетов");
+      const paymentAccount = await payments.resolve(e.payment_account);
+      if (!availability(paymentAccount))
+        throw new AppError(
+          503,
+          "Оплата пока не подключена. Пожалуйста, вернитесь позже.",
+        );
       const price = await store.quote(e.id, input.quantity, promoCode);
       if (
         ((e.price_tiers || e.has_price_schedule || promoCode) &&
@@ -550,7 +572,8 @@ export async function createApp({
           : null,
         status: demo ? "pending" : "creating",
         method: "sbp",
-        mode: mode(),
+        mode: mode(paymentAccount),
+        payment_account: e.payment_account,
         created_at: now(),
         expires_at: new Date(Date.now() + 15 * 60000).toISOString(),
         buyer_session: hash(buyer),
@@ -575,6 +598,7 @@ export async function createApp({
           o,
           await store.event(o.event_id),
           origin,
+          await payments.resolve(o.payment_account),
         );
         await store.run(
           "UPDATE orders SET status='pending',operation_id=?,payment_url=?,qr_url=?,merchant_id=? WHERE id=? AND status='creating'",
@@ -662,7 +686,11 @@ export async function createApp({
       return;
     checking.add(id);
     try {
-      const status = await readStatus(o.operation_id, o.mode);
+      const status = await readStatus(
+        o.operation_id,
+        o.mode,
+        await payments.resolve(o.payment_account),
+      );
       if (status.operation_sum !== o.total) throw new Error("amount_mismatch");
       if (status.operation_status_code === 5) await store.markPaid(id);
       else if ([6, 8].includes(status.operation_status_code))
@@ -1002,14 +1030,36 @@ export async function createApp({
       voided_at: order.voided_at,
     });
   });
-  app.post("/api/admin/qrm/check", staff, admin, async (_req, res) => {
-    const m = await checkMerchant(mode());
+  app.post("/api/admin/qrm/check", staff, admin, async (req, res) => {
+    const account = z
+      .enum(["default", "livadia"])
+      .parse(req.body?.account || "default");
+    const resolved = await payments.resolve(account);
+    const m = await checkMerchant(mode(resolved), resolved);
     res.json({
       firm_name: m.firm_name,
       ready: true,
       requires_receipt: m.requires_receipt,
     });
   });
+  app.get("/api/admin/qrm/livadia", staff, admin, async (_req, res) => {
+    res.json(await payments.status());
+  });
+  app.put(
+    "/api/admin/qrm/livadia",
+    staff,
+    admin,
+    rateLimit({
+      windowMs: 60000,
+      limit: 6,
+      message: {
+        error: "Подождите минуту перед следующей проверкой терминала",
+      },
+    }),
+    async (req, res) => {
+      res.json(await payments.save(req.body, `admin:${req.staff.id}`));
+    },
+  );
   app.post("/api/admin/smsaero/check", staff, admin, async (_req, res) => {
     res.json(await checkSmsAero());
   });
@@ -1176,6 +1226,46 @@ export async function createApp({
       dotfiles: "deny",
     }),
   );
+  app.get("/", async (req, res, next) => {
+    if (typeof req.query.event !== "string") return next();
+    const event = await store.get(
+      "SELECT title,subtitle,venue,hero_image FROM events WHERE id=? AND published=1",
+      req.query.event,
+    );
+    if (!event) return next();
+    const escape = (value) =>
+      String(value).replace(
+        /[&<>"']/g,
+        (c) =>
+          ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;",
+          })[c],
+      );
+    const title = escape(`${event.title} · ${event.venue}`);
+    const description = escape(event.subtitle);
+    const image = escape(new URL(event.hero_image, origin).href);
+    const html = await readFile(resolve("dist/index.html"), "utf8");
+    res
+      .type("html")
+      .set("Cache-Control", "no-cache")
+      .send(
+        html
+          .replace(/<title>[^<]*<\/title>/, () => `<title>${title}</title>`)
+          .replace(
+            /<meta\s+name="description"\s+content="[^"]*"\s*\/>/,
+            () => `<meta name="description" content="${description}" />`,
+          )
+          .replace(
+            "</head>",
+            () =>
+              `<meta property="og:title" content="${title}" /><meta property="og:description" content="${description}" /><meta property="og:image" content="${image}" /></head>`,
+          ),
+      );
+  });
   app.use(express.static(resolve("dist")));
   app.get("/test-lending", (_req, res) =>
     res

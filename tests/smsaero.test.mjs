@@ -126,6 +126,14 @@ test("SMS Aero keeps auth out of URL and sends a single ticket link", async (t) 
 test("SMS includes one direct group ticket link regardless of guest count", () => {
   assert.equal(
     ticketSms(
+      { title: "Одиссея", venue: "Ливадия" },
+      [{ code: "one" }],
+      "https://events.example.com",
+    ),
+    "Ливадия. Одиссея.\nhttps://events.example.com/ticket/one",
+  );
+  assert.equal(
+    ticketSms(
       { title: "Ночь красной луны" },
       [{ code: "one" }, { code: "two" }],
       "https://events.example.com",

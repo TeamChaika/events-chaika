@@ -44,6 +44,9 @@ export type EventData = {
   published: boolean | number;
   sales_open: boolean | number;
   hero_image: string;
+  payment_account?: "default" | "livadia";
+  layout?: "default" | "odisseya";
+  contact_phone?: string;
 };
 export type Config = {
   demo: boolean;

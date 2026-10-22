@@ -28,11 +28,16 @@ export function EventPartners() {
     </div>
   );
 }
-export function ContactPhone() {
+export function ContactPhone({
+  phone = "+7 978 78 73 000",
+}: {
+  phone?: string;
+}) {
+  if (!phone) return null;
   return (
-    <a className="contact-phone" href="tel:+79787873000">
+    <a className="contact-phone" href={"tel:" + phone.replace(/[^+\d]/g, "")}>
       <Phone size={16} aria-hidden="true" />
-      +7 978 78 73 000
+      {phone}
     </a>
   );
 }

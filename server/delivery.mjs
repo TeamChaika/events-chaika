@@ -26,7 +26,9 @@ export function channelReady(channel) {
 }
 export function ticketSms(event, tickets, origin) {
   if (!tickets.length) throw new Error("sms_tickets_missing");
-  return `Гастро Двор. ${event.title}.\n${origin}/ticket/${tickets[0].code}`;
+  const venue =
+    !event.venue || event.venue === "Гастродвор" ? "Гастро Двор" : event.venue;
+  return `${venue}. ${event.title}.\n${origin}/ticket/${tickets[0].code}`;
 }
 export function telegramOrderText(order, event, tickets, sms, origin) {
   const status =

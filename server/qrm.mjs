@@ -6,15 +6,27 @@ export class ProviderError extends Error {
     this.outcome = outcome;
   }
 }
-export function providerConfig(mode) {
+function accountPrefix(account) {
+  if (account === "default") return "QRM";
+  if (account === "livadia") return "QRM_LIVADIA";
+  throw new ProviderError("failed", "Неизвестный терминал QRM");
+}
+export function paymentMode(account = "default") {
+  if (typeof account === "object") return account.mode;
+  return process.env[`${accountPrefix(account)}_MODE`] || "disabled";
+}
+export function providerConfig(mode, account = "default") {
+  const saved = typeof account === "object" ? account : null;
+  const prefix = saved ? null : accountPrefix(account);
   if (!["sandbox", "live"].includes(mode))
     throw new ProviderError("failed", "Оплата QRM не настроена");
   const host =
     mode === "sandbox"
       ? "https://app.devwapiserv.qrm.ooo"
-      : process.env.QRM_API_BASE_URL;
+      : saved?.host || process.env[`${prefix}_API_BASE_URL`];
   const key =
-    mode === "sandbox" ? process.env.QRM_API_KEY : process.env.QRM_LIVE_API_KEY;
+    saved?.key ||
+    process.env[`${prefix}_${mode === "sandbox" ? "API_KEY" : "LIVE_API_KEY"}`];
   if (!host || !key)
     throw new ProviderError("failed", "Заполните серверные настройки QRM");
   const u = new URL(host);
@@ -30,7 +42,12 @@ export function providerConfig(mode) {
     (mode === "live" && /dev|test|sandbox/.test(u.hostname))
   )
     throw new ProviderError("failed", "Недопустимый адрес QRM");
-  return { host: u.origin, key };
+  return {
+    host: u.origin,
+    key,
+    merchantId:
+      saved?.merchantId || process.env[`${prefix}_EXPECTED_MERCHANT_ID`],
+  };
 }
 async function limitedText(response, limit = 64000) {
   const reader = response.body.getReader();
@@ -51,8 +68,8 @@ async function limitedText(response, limit = 64000) {
   }
   return Buffer.concat(chunks).toString();
 }
-async function request(mode, path, init = {}) {
-  const { host, key } = providerConfig(mode);
+async function request(mode, path, init = {}, account = "default") {
+  const { host, key } = providerConfig(mode, account);
   try {
     const r = await fetch(host + path, {
       ...init,
@@ -89,9 +106,15 @@ export function paymentLink(value) {
     throw new ProviderError("unknown", "Недопустимая платёжная ссылка");
   return u.href;
 }
-export async function checkMerchant(mode) {
+export async function checkMerchant(
+  mode,
+  account = "default",
+  { allowUnpinned = false } = {},
+) {
   const data = JSON.parse(
-    await limitedText(await request(mode, "/users/check-api-key/")),
+    await limitedText(
+      await request(mode, "/users/check-api-key/", {}, account),
+    ),
   );
   const m = z
     .object({
@@ -115,15 +138,21 @@ export async function checkMerchant(mode) {
     throw new ProviderError("failed", "Терминал QRM не готов к оплате");
   if (
     mode === "live" &&
-    (!process.env.QRM_EXPECTED_MERCHANT_ID ||
-      m.merchant_id !== process.env.QRM_EXPECTED_MERCHANT_ID)
+    !allowUnpinned &&
+    (!providerConfig(mode, account).merchantId ||
+      m.merchant_id !== providerConfig(mode, account).merchantId)
   )
     throw new ProviderError("failed", "Не подтверждён получатель платежа");
   return m;
 }
-export async function createPayment(order, event, origin) {
+export async function createPayment(
+  order,
+  event,
+  origin,
+  account = order.payment_account,
+) {
   const lines = orderPriceLines(order);
-  const merchant = await checkMerchant(order.mode);
+  const merchant = await checkMerchant(order.mode, account);
   const input = {
     sum: order.total,
     ttl: 15,
@@ -147,10 +176,15 @@ export async function createPayment(order, event, origin) {
       : {}),
   };
   // QRM does not document POST idempotency. Persist first, never retry an uncertain creation.
-  const response = await request(order.mode, "/operations/qr-code/", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  const response = await request(
+    order.mode,
+    "/operations/qr-code/",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+    account,
+  );
   const result = z
     .object({
       results: z.object({
@@ -176,12 +210,13 @@ export const parseStatus = (value) =>
       }),
     })
     .parse(value).results;
-export async function readStatus(operationId, mode) {
+export async function readStatus(operationId, mode, account = "default") {
   z.uuid().parse(operationId);
   const response = await request(
     mode,
     `/api/v2/sse-operations/${operationId}/qr-status/`,
     { headers: { Accept: "text/event-stream, application/json" } },
+    account,
   );
   if (response.headers.get("content-type")?.includes("application/json"))
     return parseStatus(JSON.parse(await limitedText(response)));

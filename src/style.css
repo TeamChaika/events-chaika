@@ -1533,6 +1533,14 @@ td .diagnostic {
   background: #161518;
   border-radius: 7px;
 }
+.qrm-settings {
+  margin: 28px 0;
+}
+.qrm-settings p {
+  font-size: 13px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
 .integration-card > svg {
   color: #c0a99f;
   margin-bottom: 28px;

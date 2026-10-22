@@ -54,6 +54,7 @@ import {
   MOON_INTRO_DURATION,
 } from "./useIntroPlayback";
 import { TicketCard } from "./TicketCard";
+import { OdisseyaLanding } from "./OdisseyaLanding";
 import { MarketingLink, UnsubscribePage } from "./Marketing";
 import {
   CookieNotice,
@@ -123,6 +124,9 @@ function Home() {
   const referral = pathParts.length === 2;
   const event = selected ? events.find((e) => e.id === selected) : events[0];
   useEffect(watchAttributionChoice, []);
+  useEffect(() => {
+    if (event) document.title = `${event.title} · ${event.venue}`;
+  }, [event]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -135,7 +139,6 @@ function Home() {
     }, 15000);
     Promise.all([
       api<EventData[]>("/events", { signal: controller.signal }),
-      api<Config>("/config", { signal: controller.signal }),
       referral
         ? api<{ event_id: string; link_id: string }>(
             "/promotion/resolve?" +
@@ -147,7 +150,7 @@ function Home() {
           )
         : Promise.resolve(null),
     ])
-      .then(([e, c, source]) => {
+      .then(async ([e, source]) => {
         if (!active) return;
         if (source) {
           rememberSource(source.event_id, source.link_id);
@@ -161,6 +164,13 @@ function Home() {
         const wanted = source?.event_id || selected;
         if (wanted && !e.some((event) => event.id === wanted))
           throw new Error("Мероприятие не найдено или снято с публикации.");
+        const chosen = wanted || e[0]?.id;
+        const c = await api<Config>(
+          "/config" +
+            (chosen ? "?" + new URLSearchParams({ event: chosen }) : ""),
+          { signal: controller.signal },
+        );
+        if (!active) return;
         setEvents(e);
         setConfig(c);
       })
@@ -190,7 +200,7 @@ function Home() {
     return () => clearTimeout(timeout);
   }, [event, config, minimumElapsed, artworkReady]);
 
-  const introActive = showIntro && !error && (!config || Boolean(event));
+  const introActive = showIntro && !error && event?.id === "red-moon";
   return (
     <>
       {introActive && (
@@ -221,7 +231,11 @@ function Home() {
           <p>Афиша скоро появится.</p>
           <a href="/admin">Управление событиями</a>
         </div>
-      ) : null}
+      ) : (
+        <div className="loading-screen">
+          <Spinner />
+        </div>
+      )}
     </>
   );
 }
@@ -245,6 +259,21 @@ function EventLanding({
     Boolean(event.sales_open) &&
     event.available > 0 &&
     new Date(`${event.date}T${event.time}:00+03:00`) > new Date();
+  if (event.layout === "odisseya")
+    return (
+      <div className="odisseya-theme">
+        <OdisseyaLanding
+          event={event}
+          canBuy={canBuy}
+          preview={config.demo}
+          onBuy={() => setBuy(true)}
+        />
+        <CookieNotice />
+        {buy && (
+          <Checkout event={event} config={config} close={() => setBuy(false)} />
+        )}
+      </div>
+    );
   return (
     <div
       className={"public-app " + (paused ? "motion-paused" : "")}
@@ -288,7 +317,9 @@ function EventLanding({
           <div className="hero-copy">
             <div className="eyebrow">
               <span /> {event.subtitle}{" "}
-              <span className="age-label">{event.age}+</span>
+              {event.age >= 0 && (
+                <span className="age-label">{event.age}+</span>
+              )}
             </div>
             <h1 id="event-title">
               {event.title === "Ночь красной луны" ? (
@@ -495,7 +526,14 @@ function Checkout({
     }
   }
   return (
-    <Modal title="Ваш пропуск в ночь" close={close}>
+    <Modal
+      title={
+        event.layout === "odisseya"
+          ? "Билеты на «Одиссею»"
+          : "Ваш пропуск в ночь"
+      }
+      close={close}
+    >
       <div className="checkout-event">
         <img src={event.hero_image} alt="" />
         <div>
@@ -604,7 +642,11 @@ function Checkout({
           )}
           {(["terms", "consent", "marketing"] as const).map((slug) => {
             const doc = legal?.documents.find((item) => item.slug === slug);
-            if (slug === "marketing" && !legal?.marketing_ready) return null;
+            if (
+              slug === "marketing" &&
+              (!legal?.marketing_ready || event.layout === "odisseya")
+            )
+              return null;
             return (
               doc && (
                 <label key={doc.hash} className="checkbox-label">
@@ -648,8 +690,8 @@ function Checkout({
                     {" · "}
                   </React.Fragment>
                 ))}
-              Рекламная подписка добровольная. От неё можно отказаться в любое
-              время.
+              {event.layout !== "odisseya" &&
+                "Рекламная подписка добровольная. От неё можно отказаться в любое время."}
             </p>
           )}
           {(legalError || error) && (
@@ -711,7 +753,9 @@ function OrderPage() {
     [busy, setBusy] = useState(false);
   async function load() {
     try {
-      setOrder(await api<OrderData>("/orders/" + access));
+      const loaded = await api<OrderData>("/orders/" + access);
+      setOrder(loaded);
+      document.title = `${loaded.event.title} · Заказ`;
       setError("");
     } catch (e) {
       setError((e as Error).message);
@@ -775,13 +819,27 @@ function OrderPage() {
         />
       )}
       <div
-        className="order-page"
+        className={
+          "order-page" +
+          (order?.event.layout === "odisseya" ? " odisseya-theme" : "")
+        }
         inert={introActive}
         aria-hidden={introActive || undefined}
       >
         <header className="simple-header">
-          <Brand />
-          <a href="/" className="text-link">
+          {order && order.event.id !== "red-moon" ? (
+            <strong>{order.event.venue}</strong>
+          ) : (
+            <Brand />
+          )}
+          <a
+            href={
+              order
+                ? "/?" + new URLSearchParams({ event: order.event.id })
+                : "/"
+            }
+            className="text-link"
+          >
             <ChevronLeft size={16} />
             На афишу
           </a>
@@ -935,7 +993,10 @@ function OrderPage() {
                 </p>
               )}
               {["expired", "cancelled", "failed"].includes(order.status) && (
-                <a href="/" className="button secondary">
+                <a
+                  href={"/?" + new URLSearchParams({ event: order.event.id })}
+                  className="button secondary"
+                >
                   Вернуться к мероприятию
                 </a>
               )}
@@ -998,6 +1059,7 @@ function SingleTicket() {
           if (!active) return;
           loaded = true;
           setData(ticket);
+          document.title = `${ticket.event.title} · Билет`;
           setError("");
         })
         .catch((e) => {
@@ -1036,7 +1098,10 @@ function SingleTicket() {
         />
       )}
       <div
-        className="single-ticket-page"
+        className={
+          "single-ticket-page" +
+          (data?.event.layout === "odisseya" ? " odisseya-theme" : "")
+        }
         inert={introActive}
         aria-hidden={introActive || undefined}
       >

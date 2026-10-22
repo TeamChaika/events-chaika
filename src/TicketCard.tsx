@@ -1,5 +1,5 @@
 import { ArrowUpRight, MapPin } from "lucide-react";
-import { Brand, EventPartners, ContactPhone } from "./ui";
+import { EventPartners, ContactPhone } from "./ui";
 import { dateLabel, type EventData, type TicketData } from "./types";
 
 export function TicketCard({
@@ -22,7 +22,9 @@ export function TicketCard({
   const used = group ? group.remaining === 0 : Boolean(ticket.used_at);
   return (
     <article
-      className="real-ticket"
+      className={
+        "real-ticket" + (event.layout === "odisseya" ? " odisseya-ticket" : "")
+      }
       aria-label={
         shared
           ? `Билет на ${group!.issued} гостей: ${event.title}`
@@ -30,14 +32,16 @@ export function TicketCard({
       }
     >
       <div className="ticket-visual">
-        <div className="ticket-lunar-art" aria-hidden="true">
-          <div className="ticket-orbit" />
-          <div className="ticket-moon" />
-          <div className="ticket-grid" />
-        </div>
+        {redMoon && (
+          <div className="ticket-lunar-art" aria-hidden="true">
+            <div className="ticket-orbit" />
+            <div className="ticket-moon" />
+            <div className="ticket-grid" />
+          </div>
+        )}
         <div className="ticket-top">
-          {redMoon ? <EventPartners /> : <Brand />}
-          <span className="ticket-age">{event.age}+</span>
+          {redMoon ? <EventPartners /> : <strong>{event.venue}</strong>}
+          {event.age >= 0 && <span className="ticket-age">{event.age}+</span>}
         </div>
         <div className="ticket-edition">
           <span>{demo ? "ДЕМО-БИЛЕТ" : "ЭЛЕКТРОННЫЙ БИЛЕТ"}</span>
@@ -57,7 +61,9 @@ export function TicketCard({
             <strong>{dateLabel(event.date)}</strong>
           </div>
           <div>
-            <span>НАЧАЛО</span>
+            <span>
+              {event.layout === "odisseya" ? "СБОР ГОСТЕЙ" : "НАЧАЛО"}
+            </span>
             <strong>{event.time}</strong>
           </div>
           <div className="ticket-year" aria-hidden="true">
@@ -136,7 +142,9 @@ export function TicketCard({
         <a className="ticket-own-link" href={"/ticket/" + ticket.code}>
           Открыть билет <ArrowUpRight size={12} />
         </a>
-        <ContactPhone />
+        <ContactPhone
+          phone={event.contact_phone || (redMoon ? undefined : "")}
+        />
       </div>
     </article>
   );

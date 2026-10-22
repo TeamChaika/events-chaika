@@ -22,6 +22,7 @@ import {
   FileCheck2,
 } from "lucide-react";
 import { Brand, ErrorNotice, Spinner, Modal, GuestFields } from "./ui";
+import { PaymentSettings } from "./PaymentSettings";
 import { PriceSchedule, PriceBreakdown, usePriceQuote } from "./Pricing";
 import { GuestSearch } from "./GuestSearch";
 import { AcceptanceHistory } from "./Legal";
@@ -845,6 +846,7 @@ export function Admin() {
                       </button>
                     </div>
                   )}
+                  <PaymentSettings />
                   <div className="admin-section-title">
                     <h2>Доставка сообщений</h2>
                     <button
@@ -1094,7 +1096,7 @@ function EventEditor({
       ...Object.fromEntries(f),
       price: Math.round(Number(f.get("price")) * 100),
       capacity: Number(f.get("capacity")),
-      age: Number(f.get("age")),
+      age: f.get("age") === "" ? -1 : Number(f.get("age")),
       published: f.get("published") === "on",
       sales_open: f.get("sales_open") === "on",
       hero_image: heroImage,
@@ -1236,8 +1238,8 @@ function EventEditor({
               name="age"
               min="0"
               max="21"
-              defaultValue={e?.age ?? 16}
-              required
+              defaultValue={e && e.age < 0 ? "" : (e?.age ?? "")}
+              placeholder="Не указано"
             />
           </label>
         </div>
@@ -1252,11 +1254,40 @@ function EventEditor({
         </label>
         <label>
           Дресс-код
+          <input name="dresscode" defaultValue={e?.dresscode ?? ""} />
+        </label>
+        <div className="form-row">
+          <label>
+            Терминал СБП
+            <select
+              name="payment_account"
+              defaultValue={e?.payment_account || "default"}
+            >
+              <option value="default">Гастро Двор · основной QRM</option>
+              <option value="livadia">Ливадия · отдельный QRM</option>
+            </select>
+          </label>
+          <label>
+            Оформление страницы
+            <select name="layout" defaultValue={e?.layout || "default"}>
+              <option value="default">Стандартное</option>
+              <option value="odisseya">Одиссея · Ливадия</option>
+            </select>
+          </label>
+        </div>
+        <label>
+          Телефон площадки
           <input
-            name="dresscode"
-            defaultValue={e?.dresscode || "Black, red & a little mystery"}
+            name="contact_phone"
+            type="tel"
+            defaultValue={e?.contact_phone || ""}
+            maxLength={26}
           />
         </label>
+        <p className="muted small-text">
+          Секретный ключ терминала хранится на сервере. Уже созданные платежи
+          сохраняют свой терминал.
+        </p>
         <div className="form-row">
           <label className="checkbox-label">
             <input

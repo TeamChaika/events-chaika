@@ -1,0 +1,533 @@
+.odisseya-theme {
+  --bg: #faf8f2;
+  --paper: #143e54;
+  --red: #17465a;
+  --muted: #66675f;
+  --line: #143e5426;
+  color: #143e54;
+  background: #faf8f2;
+  color-scheme: light;
+}
+.odisseya-theme .button.primary {
+  background: #153e53;
+  color: #fff;
+  border-color: #153e53;
+  box-shadow: none;
+  border-radius: 3px;
+}
+.odisseya-theme .button.primary:hover {
+  background: #24586d;
+}
+.odisseya-preview {
+  padding: 8px 20px;
+  background: #ece9de;
+  text-align: center;
+  font-size: 11px;
+}
+.odisseya-hero {
+  position: relative;
+  isolation: isolate;
+  min-height: 850px;
+  padding: 0 24px 220px;
+  overflow: hidden;
+}
+.odisseya-world {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+}
+.odisseya-world img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+}
+.odisseya-hero::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 70px;
+  background: linear-gradient(transparent, #faf8f2);
+  pointer-events: none;
+}
+.odisseya-header {
+  width: min(620px, 70%);
+  margin: auto;
+  padding: 28px 0 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+.odisseya-header > a:not(.odisseya-brand) {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  border-bottom: 1px solid #94806a66;
+  padding-bottom: 5px;
+}
+.odisseya-brand {
+  text-align: center;
+}
+.odisseya-brand strong {
+  display: block;
+  font:
+    34px Georgia,
+    serif;
+  letter-spacing: 0.07em;
+  color: #6e583d;
+}
+.odisseya-brand span {
+  display: block;
+  font-size: 8px;
+  letter-spacing: 0.2em;
+  margin-top: 6px;
+}
+.odisseya-copy {
+  max-width: 660px;
+  margin: auto;
+  text-align: center;
+}
+.odisseya-date {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 0 0 14px;
+}
+.odisseya-date > strong {
+  font:
+    66px/0.95 Georgia,
+    serif;
+  letter-spacing: -0.08em;
+}
+.odisseya-date > span {
+  font:
+    22px/1 Georgia,
+    serif;
+  text-transform: uppercase;
+  text-align: left;
+}
+.odisseya-date small {
+  display: block;
+  font:
+    8px/1.2 "Manrope Variable",
+    sans-serif;
+  letter-spacing: 0.13em;
+  margin-top: 8px;
+}
+.odisseya-copy h1 {
+  font:
+    clamp(70px, 8.4vw, 130px) / 1 Georgia,
+    serif;
+  text-transform: uppercase;
+  letter-spacing: -0.065em;
+  margin: 16px -30px 0;
+}
+.odisseya-waves {
+  display: block;
+  width: 115px;
+  height: 20px;
+  margin: 2px auto 14px;
+}
+.odisseya-subtitle {
+  font:
+    24px/1.3 Georgia,
+    serif;
+  text-transform: uppercase;
+  letter-spacing: 0.045em;
+  max-width: 570px;
+  margin: 0 auto;
+  color: #6d573a;
+}
+.odisseya-rule {
+  width: 80px;
+  height: 1px;
+  background: #9b886b;
+  margin: 23px auto;
+}
+.odisseya-tagline {
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  line-height: 1.9;
+  text-transform: uppercase;
+}
+.odisseya-tagline em {
+  font-style: normal;
+}
+.odisseya-booking {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 24px;
+  margin-top: 22px;
+}
+.odisseya-booking > span {
+  text-align: left;
+}
+.odisseya-booking strong,
+.odisseya-mobile-buy strong {
+  display: block;
+  font-size: 22px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.odisseya-booking small,
+.odisseya-mobile-buy small {
+  display: block;
+  font-size: 10px;
+  color: #66675f;
+  margin-top: 3px;
+}
+.odisseya-arrival {
+  font-size: 11px;
+  color: #6d573a;
+  margin-top: 16px;
+}
+.odisseya-kicker {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.7;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: #806b4c;
+}
+.odisseya-menu {
+  padding: 70px max(24px, calc((100vw - 1060px) / 2)) 90px;
+  scroll-margin-top: 24px;
+}
+.odisseya-section-heading {
+  text-align: center;
+}
+.odisseya-theme h2 {
+  font:
+    clamp(35px, 4vw, 54px) / 1.15 Georgia,
+    serif;
+  margin: 18px 0;
+  letter-spacing: -0.03em;
+}
+.odisseya-theme h2 em {
+  color: #806b4c;
+  font-weight: normal;
+}
+.odisseya-section-heading > p:last-child {
+  color: #66675f;
+  font-size: 13px;
+}
+.odisseya-menu ol {
+  list-style: none;
+  padding: 0;
+  margin: 48px 0 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 64px;
+}
+.odisseya-menu li {
+  border-top: 1px solid #8e775a44;
+  display: flex;
+  gap: 24px;
+  padding: 30px 0;
+}
+.odisseya-course-number {
+  font:
+    italic 28px Georgia,
+    serif;
+  color: #9e8a68;
+}
+.odisseya-menu h3 {
+  font:
+    30px Georgia,
+    serif;
+  margin: 0 0 14px;
+}
+.odisseya-menu li p {
+  font-size: 13px;
+  line-height: 1.85;
+  color: #66675f;
+  margin: 5px 0;
+}
+.odisseya-menu li .odisseya-dish {
+  color: #153c50;
+  font-weight: 600;
+}
+.odisseya-location {
+  text-align: center;
+  padding: 70px 24px 80px;
+  background: #eeeade;
+  border-top: 1px solid #8e775a33;
+  scroll-margin-top: 20px;
+}
+.odisseya-location > a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 20px auto;
+  font-size: 14px;
+  max-width: 600px;
+}
+.odisseya-location > p {
+  font-size: 13px;
+}
+.odisseya-footer {
+  border-top: 1px solid #153c5026;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding: 30px 40px;
+  font-size: 11px;
+}
+.odisseya-mobile-buy {
+  display: none;
+}
+.odisseya-theme dialog {
+  background: #f7f5ef;
+  color: #153c50;
+  border-color: #153c5033;
+}
+.odisseya-theme input,
+.odisseya-theme select,
+.odisseya-theme textarea {
+  background: #fff;
+  color: #153c50;
+  border-color: #153c5044;
+}
+.odisseya-theme .checkout-event,
+.odisseya-theme .payment-panel,
+.odisseya-theme .payment-box {
+  background: #eeece3;
+}
+.odisseya-theme .cookie-notice {
+  color: #f3f0e9;
+}
+.odisseya-theme.single-ticket-page {
+  background: #f7f5ef;
+}
+.real-ticket.odisseya-ticket {
+  --ticket-red: #8db6cc;
+  background: #f7f5ef;
+  border-color: #446276;
+  color: #153c50;
+  box-shadow: 0 20px 50px #153c501a;
+}
+.odisseya-ticket .ticket-visual {
+  background: linear-gradient(135deg, #153c50, #24596a);
+  color: white;
+}
+.real-ticket.odisseya-ticket h2 {
+  font-family: Georgia, serif;
+  text-transform: none;
+  text-shadow: none;
+  color: white;
+}
+.odisseya-ticket .ticket-tagline {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: #e4edf0;
+}
+.odisseya-ticket .ticket-edition,
+.odisseya-ticket .ticket-schedule span,
+.odisseya-ticket .ticket-year {
+  color: #c9dae1;
+}
+.odisseya-ticket .ticket-edition > span:first-child::before {
+  background: #c9dae1;
+  box-shadow: none;
+}
+.odisseya-ticket .ticket-location-row {
+  background: #eeece3;
+  border-color: #153c5026;
+}
+.real-ticket.odisseya-ticket .ticket-location strong,
+.real-ticket.odisseya-ticket .ticket-location span,
+.real-ticket.odisseya-ticket .ticket-own-link,
+.real-ticket.odisseya-ticket .contact-phone {
+  color: #153c50;
+}
+.odisseya-ticket .ticket-perforation::before,
+.odisseya-ticket .ticket-perforation::after {
+  background: #faf8f2;
+}
+.odisseya-ticket .ticket-qr-frame {
+  background: white;
+  border-color: #153c5080;
+  box-shadow: none;
+}
+.odisseya-ticket .ticket-qr-frame::before,
+.odisseya-ticket .ticket-qr-frame::after {
+  background: #153c50;
+}
+.odisseya-ticket .ticket-admit,
+.odisseya-ticket .ticket-label,
+.odisseya-ticket .ticket-number,
+.odisseya-ticket .ticket-group-status p,
+.odisseya-ticket .ticket-location,
+.real-ticket.odisseya-ticket code {
+  color: #53636b;
+}
+.odisseya-ticket .ticket-group-status,
+.odisseya-ticket .ticket-admit,
+.odisseya-ticket .ticket-perforation,
+.odisseya-ticket .ticket-serial-row {
+  border-color: #153c5026;
+}
+.odisseya-ticket .ticket-schedule,
+.odisseya-ticket .ticket-perforation {
+  border-color: #ffffff33;
+}
+
+@media (min-width: 1600px) {
+  .odisseya-hero {
+    min-height: 980px;
+  }
+  .odisseya-header {
+    padding-top: 40px;
+    padding-bottom: 32px;
+  }
+  .odisseya-copy {
+    max-width: 780px;
+  }
+  .odisseya-subtitle {
+    font-size: 28px;
+  }
+}
+@media (max-width: 1000px) and (min-width: 761px) {
+  .odisseya-header {
+    width: 90%;
+  }
+  .odisseya-hero {
+    min-height: 820px;
+  }
+  .odisseya-copy {
+    max-width: 580px;
+  }
+  .odisseya-subtitle {
+    font-size: 21px;
+  }
+}
+@media (max-width: 760px) {
+  .odisseya-hero {
+    min-height: max(860px, 142vw);
+    padding: 0 20px 340px;
+  }
+  .odisseya-world img {
+    object-fit: cover;
+    object-position: center top;
+  }
+  .odisseya-header {
+    width: 100%;
+    padding: 35px 0 24px;
+    display: block;
+  }
+  .odisseya-header > a:not(.odisseya-brand) {
+    display: none;
+  }
+  .odisseya-brand {
+    display: block;
+  }
+  .odisseya-brand strong {
+    font-size: 30px;
+  }
+  .odisseya-brand span {
+    font-size: 7px;
+  }
+  .odisseya-copy {
+    max-width: 520px;
+  }
+  .odisseya-date {
+    margin: 0 0 18px;
+  }
+  .odisseya-date > strong {
+    font-size: 56px;
+  }
+  .odisseya-date > span {
+    font-size: 18px;
+  }
+  .odisseya-date small {
+    font-size: 7px;
+  }
+  .odisseya-copy h1 {
+    font-size: clamp(47px, 12.8vw, 86px);
+    margin: 10px -6px 0;
+  }
+  .odisseya-subtitle {
+    font-size: clamp(17px, 4.25vw, 23px);
+    max-width: 380px;
+    letter-spacing: 0.02em;
+  }
+  .odisseya-waves {
+    width: 85px;
+    margin-bottom: 14px;
+  }
+  .odisseya-rule {
+    margin: 18px auto;
+  }
+  .odisseya-tagline {
+    font-size: 10px;
+    letter-spacing: 0.07em;
+  }
+  .odisseya-booking {
+    gap: 16px;
+    margin-top: 18px;
+  }
+  .odisseya-booking strong {
+    font-size: 20px;
+  }
+  .odisseya-booking .button {
+    padding: 14px 16px;
+    font-size: 12px;
+    min-height: 48px;
+  }
+  .odisseya-arrival {
+    font-size: 10px;
+  }
+  .odisseya-menu {
+    padding: 40px 24px 45px;
+  }
+  .odisseya-menu ol {
+    grid-template-columns: 1fr;
+    gap: 0;
+    margin-top: 32px;
+  }
+  .odisseya-location {
+    padding: 48px 24px;
+  }
+  .odisseya-footer {
+    padding: 28px 24px 120px;
+  }
+  .odisseya-mobile-buy {
+    position: fixed;
+    z-index: 40;
+    inset: auto 0 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 20px calc(14px + env(safe-area-inset-bottom));
+    background: #faf8f2f5;
+    border-top: 1px solid #153c5026;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .odisseya-copy {
+    animation: odisseya-reveal 0.8s ease-out both;
+  }
+  @keyframes odisseya-reveal {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+@media print {
+  .odisseya-header,
+  .odisseya-mobile-buy {
+    display: none;
+  }
+}

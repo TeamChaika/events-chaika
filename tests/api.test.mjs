@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { createApp } from "../server/index.mjs";
 import { currentLegalDocuments } from "../server/legal.mjs";
 import pg from "pg";
+import { paymentSettings } from "../server/payment-settings.mjs";
 
 const origin = "http://localhost:5173";
 // These are technical test fixtures, not approved real-world legal texts.
@@ -25,6 +26,326 @@ const guest = {
   event_id: "red-moon",
   consent: true,
 };
+
+test("admin stores a verified Livadia key encrypted; credentials survive reload without being exposed or replacing the terminal", async (t) => {
+  const keys = [
+    "QRM_SETTINGS_ENCRYPTION_KEY",
+    "QRM_LIVADIA_EXPECTED_MERCHANT_ID",
+  ];
+  const before = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+  process.env.QRM_SETTINGS_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString(
+    "base64",
+  );
+  delete process.env.QRM_LIVADIA_EXPECTED_MERCHANT_ID;
+  const originalFetch = global.fetch;
+  let merchantId = "fixture-livadia",
+    providerCalls = 0;
+  const secret = "fixture-secret-123456789";
+  global.fetch = async (url, init) => {
+    if (!String(url).startsWith("https://app.wapiserv.qrm.ooo/"))
+      return originalFetch(url, init);
+    assert.ok(
+      String(url).endsWith("/users/check-api-key/"),
+      "settings must not create a payment",
+    );
+    assert.equal(init.headers["X-Api-Key"], secret);
+    providerCalls++;
+    return Response.json({
+      merchant_id: merchantId,
+      firm_name: "Ливадия Fixture",
+      qrt_is_b2c: true,
+      requires_receipt: false,
+      subscription_end_date: "2099-01-01",
+    });
+  };
+  t.after(() => {
+    global.fetch = originalFetch;
+    for (const key of keys) {
+      if (before[key] === undefined) delete process.env[key];
+      else process.env[key] = before[key];
+    }
+  });
+  const h = await harness(t);
+  const input = { host: "https://app.wapiserv.qrm.ooo", key: secret };
+  assert.equal((await h.request("/admin/qrm/livadia")).status, 401);
+  assert.equal(
+    (await h.request("/admin/qrm/livadia", { method: "PUT", body: input }))
+      .status,
+    401,
+  );
+  await h.login("door");
+  assert.equal(
+    (await h.request("/admin/qrm/livadia", { method: "PUT", body: input }))
+      .status,
+    403,
+  );
+  await h.login();
+  assert.equal(
+    (
+      await h.request("/admin/qrm/livadia", {
+        method: "PUT",
+        body: input,
+        asOrigin: "https://evil.example",
+      })
+    ).status,
+    403,
+  );
+  delete process.env.QRM_SETTINGS_ENCRYPTION_KEY;
+  assert.equal(
+    (await h.request("/admin/qrm/livadia", { method: "PUT", body: input }))
+      .status,
+    503,
+  );
+  process.env.QRM_SETTINGS_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString(
+    "base64",
+  );
+  assert.equal(providerCalls, 0);
+  const save = await h.request("/admin/qrm/livadia", {
+    method: "PUT",
+    body: input,
+  });
+  assert.equal(save.status, 200);
+  assert.equal(save.body.configured, true);
+  assert.equal(JSON.stringify(save).includes(secret), false);
+  const stored = await h.store.get(
+    "SELECT * FROM payment_accounts WHERE id='livadia'",
+  );
+  assert.equal(JSON.stringify(stored).includes(secret), false);
+  const reloaded = paymentSettings(h.store);
+  assert.equal((await reloaded.resolve("livadia")).key, secret);
+  assert.equal(
+    (await reloaded.resolve("livadia")).merchantId,
+    "fixture-livadia",
+  );
+  assert.equal(await reloaded.resolve("default"), "default");
+  for (const path of [
+    "/admin/qrm/livadia",
+    "/events",
+    "/config",
+    "/admin/overview",
+  ])
+    assert.equal(
+      JSON.stringify((await h.request(path)).body).includes(secret),
+      false,
+    );
+  assert.equal(
+    JSON.stringify(await h.store.all("SELECT * FROM audit")).includes(secret),
+    false,
+  );
+  merchantId = "another-terminal";
+  assert.equal(
+    (await h.request("/admin/qrm/livadia", { method: "PUT", body: input }))
+      .status,
+    409,
+  );
+  assert.equal(
+    (await reloaded.resolve("livadia")).merchantId,
+    "fixture-livadia",
+  );
+  const beforeUnsafe = providerCalls;
+  await assert.rejects(
+    reloaded.save({ ...input, host: "https://127.0.0.1" }, "fixture"),
+  );
+  assert.equal(providerCalls, beforeUnsafe);
+  await h.store.run(
+    "UPDATE payment_accounts SET encrypted_config=? WHERE id='livadia'",
+    "broken",
+  );
+  await assert.rejects(reloaded.resolve("livadia"), { status: 503 });
+});
+
+test("event terminals are isolated, missing Livadia credentials fail closed, and orders retain their terminal", async (t) => {
+  const before = { ...process.env };
+  const originalFetch = global.fetch;
+  const env = {
+    QRM_MODE: "live",
+    QRM_API_BASE_URL: "https://app.qrm.ooo",
+    QRM_LIVE_API_KEY: "default-fixture",
+    QRM_EXPECTED_MERCHANT_ID: "default-merchant",
+    QRM_LIVADIA_MODE: "live",
+    QRM_LIVADIA_API_BASE_URL: "https://app.qrm.ooo",
+    QRM_LIVADIA_LIVE_API_KEY: "",
+    QRM_LIVADIA_EXPECTED_MERCHANT_ID: "livadia-merchant",
+    QRM_SETTINGS_ENCRYPTION_KEY: Buffer.alloc(32, 9).toString("base64"),
+  };
+  Object.assign(process.env, env);
+  const calls = [],
+    operations = new Map();
+  global.fetch = async (url, init) => {
+    if (!String(url).startsWith("https://app.qrm.ooo/"))
+      return originalFetch(url, init);
+    const accountKey = init.headers["X-Api-Key"];
+    calls.push({ url, accountKey });
+    const merchant = accountKey.startsWith("livadia-fixture")
+      ? "livadia-merchant"
+      : "default-merchant";
+    if (String(url).endsWith("/users/check-api-key/"))
+      return Response.json({
+        merchant_id: merchant,
+        firm_name: "Fixture",
+        qrt_is_b2c: true,
+        requires_receipt: false,
+        subscription_end_date: "2099-01-01",
+      });
+    if (init.method === "POST") {
+      const id = randomUUID();
+      operations.set(id, { key: accountKey, sum: JSON.parse(init.body).sum });
+      return Response.json({
+        results: { operation_id: id, qr_link: "https://qr.nspk.ru/fixture" },
+      });
+    }
+    const operation = operations.get(String(url).split("/").at(-3));
+    assert.ok(operation, "reconcile must reference a created operation");
+    assert.equal(
+      accountKey,
+      operation.key,
+      "status checks must use the original terminal",
+    );
+    return Response.json({
+      results: { operation_status_code: 5, operation_sum: operation.sum },
+    });
+  };
+  t.after(() => {
+    global.fetch = originalFetch;
+    for (const key of Object.keys(env)) {
+      if (before[key] === undefined) delete process.env[key];
+      else process.env[key] = before[key];
+    }
+  });
+  const h = await harness(t, {
+    demo: false,
+    origin: "https://events.example.com",
+  });
+  await h.store
+    .run(`INSERT INTO events (id,title,subtitle,date,time,venue,address,price,capacity,description,dresscode,age,published,sales_open,created_at,payment_account,layout,contact_phone)
+    SELECT 'odisseya','Одиссея',subtitle,date,time,'Ливадия',address,800000,60,description,'',-1,1,1,created_at,'livadia','odisseya','+7 (978) 687-20-64' FROM events WHERE id='red-moon'`);
+  assert.equal((await h.request("/config")).body.paymentReady, true);
+  assert.equal(
+    (await h.request("/config?event=odisseya")).body.paymentReady,
+    false,
+  );
+  assert.equal((await h.request("/config?event=missing")).status, 404);
+  const customer = { ...guest, event_id: "odisseya", quantity: 5 };
+  assert.equal((await h.order(customer)).status, 503);
+  assert.equal((await h.store.get("SELECT COUNT(*) AS n FROM orders")).n, 0);
+  assert.equal(calls.length, 0);
+  process.env.QRM_LIVADIA_LIVE_API_KEY = "livadia-fixture";
+  assert.equal(
+    (await h.request("/config?event=odisseya")).body.paymentReady,
+    true,
+  );
+  await paymentSettings(h.store).save(
+    { host: "https://app.qrm.ooo", key: "livadia-fixture-encrypted" },
+    "fixture",
+  );
+  delete process.env.QRM_LIVADIA_LIVE_API_KEY;
+  assert.equal(
+    (await h.request("/config?event=odisseya")).body.paymentReady,
+    true,
+  );
+  const key = randomUUID();
+  const created = await h.order(customer, key);
+  assert.equal(created.status, 201);
+  assert.equal(created.body.total, 4000000);
+  let saved = await h.store.get(
+    "SELECT * FROM orders WHERE id=?",
+    created.body.id,
+  );
+  assert.equal(saved.payment_account, "livadia");
+  assert.equal(saved.merchant_id, "livadia-merchant");
+  const other = await h.order();
+  assert.equal(other.status, 201);
+  assert.equal(
+    (
+      await h.store.get(
+        "SELECT payment_account FROM orders WHERE id=?",
+        other.body.id,
+      )
+    ).payment_account,
+    "default",
+  );
+  await h.store.run(
+    "UPDATE events SET payment_account='default' WHERE id='odisseya'",
+  );
+  const count = calls.length;
+  const repeated = await h.order(customer, key);
+  assert.equal(repeated.body.id, created.body.id);
+  assert.equal(
+    calls.length,
+    count,
+    "an idempotent retry must not create another payment",
+  );
+  const callback = await h.request(
+    `/webhooks/qrm/${saved.id}/${saved.webhook_token}`,
+    { method: "POST", body: {} },
+  );
+  assert.equal(callback.status, 200);
+  saved = await h.store.get("SELECT * FROM orders WHERE id=?", saved.id);
+  assert.equal(saved.status, "paid");
+  assert.equal(
+    (
+      await h.store.get(
+        "SELECT COUNT(*) AS n FROM tickets WHERE order_id=?",
+        saved.id,
+      )
+    ).n,
+    5,
+  );
+  const publicResponse = JSON.stringify((await h.request("/events")).body);
+  assert.ok(
+    !publicResponse.includes("fixture") && !publicResponse.includes("merchant"),
+  );
+});
+
+test("admin event settings preserve terminal and layout for older clients and reject unknown accounts", async (t) => {
+  const h = await harness(t);
+  await h.login();
+  const event = await h.store.event("red-moon");
+  const input = {
+    ...event,
+    published: true,
+    sales_open: true,
+    title: "Одиссея",
+    capacity: 60,
+    price_tiers: null,
+    price: 800000,
+    venue: "Ливадия",
+    age: -1,
+    dresscode: "",
+    contact_phone: "+7 (978) 687-20-64",
+    payment_account: "livadia",
+    layout: "odisseya",
+    hero_image: "/assets/odisseya.jpg",
+  };
+  const created = await h.request("/admin/events", {
+    method: "POST",
+    body: input,
+  });
+  assert.equal(created.status, 201);
+  assert.equal(created.body.capacity, 60);
+  assert.equal(created.body.payment_account, "livadia");
+  const legacy = { ...input };
+  delete legacy.payment_account;
+  delete legacy.layout;
+  delete legacy.contact_phone;
+  const updated = await h.request(`/admin/events/${created.body.id}`, {
+    method: "PUT",
+    body: legacy,
+  });
+  assert.equal(updated.status, 200);
+  assert.equal(updated.body.payment_account, "livadia");
+  assert.equal(updated.body.layout, "odisseya");
+  assert.equal(updated.body.contact_phone, input.contact_phone);
+  assert.equal(
+    (
+      await h.request("/admin/events", {
+        method: "POST",
+        body: { ...input, payment_account: "unknown" },
+      })
+    ).status,
+    400,
+  );
+});
 async function harness(t, options = {}) {
   let databaseUrl, cleanupDatabase;
   if (process.env.TEST_DATABASE_URL) {
