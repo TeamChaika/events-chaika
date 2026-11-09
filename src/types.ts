@@ -53,9 +53,7 @@ export type EventData = {
   contact_phone?: string;
 };
 export const eventPath = (event: Pick<EventData, "id" | "public_slug">) =>
-  event.public_slug
-    ? `/e/${encodeURIComponent(event.public_slug)}`
-    : "/?" + new URLSearchParams({ event: event.id });
+  `/e/${encodeURIComponent(event.public_slug || event.id)}`;
 export type Config = {
   demo: boolean;
   paymentMode: string;

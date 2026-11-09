@@ -8,6 +8,7 @@ import { z } from "zod";
 import { AppError, token } from "./store.mjs";
 import { telegram } from "./telegram.mjs";
 import { promoCodeSchema, promoCodesSchema, readPromos } from "./pricing.mjs";
+import { reservedEventSlugs as reserved } from "./event-slugs.mjs";
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 export const ATTRIBUTION_CONSENT_VERSION = "2026-09-29.1";
@@ -21,20 +22,6 @@ const label = z
   .min(2)
   .max(80)
   .regex(/^[^\r\n\x00-\x1f]+$/);
-const reserved = new Set([
-  "api",
-  "team",
-  "admin",
-  "checkin",
-  "wristbands",
-  "ticket",
-  "order",
-  "legal",
-  "unsubscribe",
-  "assets",
-  "media",
-  "e",
-]);
 
 export function isPromotionPath(path) {
   const parts = path.split("/");

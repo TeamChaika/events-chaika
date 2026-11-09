@@ -161,11 +161,16 @@ function Home() {
           history.replaceState(
             history.state,
             "",
-            "/?" + new URLSearchParams({ event: source.event_id }),
+            eventPath(
+              e.find((event) => event.id === source.event_id) || {
+                id: source.event_id,
+              },
+            ),
           );
         }
         const shortEvent = shortSlug
-          ? e.find((event) => event.public_slug === shortSlug)
+          ? e.find((event) => event.public_slug === shortSlug) ||
+            e.find((event) => event.id === shortSlug)
           : null;
         if (shortSlug && !shortEvent)
           throw new Error("Мероприятие не найдено или снято с публикации.");

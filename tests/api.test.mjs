@@ -346,6 +346,52 @@ test("admin event settings preserve terminal and layout for older clients and re
     400,
   );
 });
+test("new events get public slugs automatically, keep them after edits and support both URL formats", async (t) => {
+  const h = await harness(t);
+  await h.login();
+  const input = {
+    ...(await h.store.event("red-moon")),
+    title: "Ливадия Новогодняя ночь",
+    published: true,
+    sales_open: false,
+  };
+  const created = await h.request("/admin/events", {
+    method: "POST",
+    body: input,
+  });
+  assert.equal(created.status, 201);
+  const { id, public_slug: slug } = created.body;
+  assert.equal(slug, "livadiya-novogodnyaya-noch");
+  assert.equal(
+    (await h.request("/events")).body.find((e) => e.id === id).public_slug,
+    slug,
+  );
+  for (const path of [`/e/${slug}`, `/e/${id}`, `/?event=${id}`]) {
+    const page = await fetch(h.base + path);
+    assert.equal(page.status, 200, path);
+    assert.ok((await page.text()).includes(input.title), path);
+  }
+  const repeated = await h.request("/admin/events", {
+    method: "POST",
+    body: input,
+  });
+  assert.equal(repeated.status, 201);
+  assert.equal(repeated.body.public_slug, slug + "-2");
+  const edited = await h.request(`/admin/events/${id}`, {
+    method: "PUT",
+    body: { ...input, title: "Новое название вечера" },
+  });
+  assert.equal(edited.status, 200);
+  assert.equal(edited.body.public_slug, slug);
+  await h.request(`/admin/events/${id}`, {
+    method: "PUT",
+    body: { ...input, published: false },
+  });
+  assert.equal((await fetch(h.base + `/e/${slug}`)).status, 404);
+  assert.equal((await fetch(h.base + `/e/${id}`)).status, 404);
+  assert.equal((await fetch(h.base + "/e/no-such-event")).status, 404);
+});
+
 async function harness(t, options = {}) {
   let databaseUrl, cleanupDatabase;
   if (process.env.TEST_DATABASE_URL) {

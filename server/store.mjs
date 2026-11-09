@@ -1048,4 +1048,9 @@ export async function seed(store) {
     1,
     new Date().toISOString(),
   );
+  await store.run(
+    "INSERT INTO promotion_events(event_id,slug) VALUES (?,?)",
+    "red-moon",
+    "moon",
+  );
 }

@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import QRCode from "qrcode";
 import { openStore, seed, token, AppError } from "./store.mjs";
+import { ensureEventSlug, ensureEventSlugs } from "./event-slugs.mjs";
 import {
   providerConfig,
   paymentMode,
@@ -154,7 +155,10 @@ export async function createApp({
     await store.db.close();
     throw error;
   }
-  await store.transaction(() => seed(store));
+  await store.transaction(async () => {
+    await seed(store);
+    await ensureEventSlugs(store);
+  });
   // A rolling deploy may overlap a healthy instance. Recover only expired leases.
   const recover = async () => {
     await store.run(
@@ -877,12 +881,16 @@ export async function createApp({
       created_at: now(),
     };
     const keys = Object.keys(values);
-    await store.run(
-      `INSERT INTO events (${keys.join(",")}) VALUES (${keys.map(() => "?").join(",")})`,
-      ...Object.values(values),
-    );
-    await store.audit("event_create", id, req.staff.role);
-    res.status(201).json(await store.event(id));
+    const created = await store.transaction(async () => {
+      await store.run(
+        `INSERT INTO events (${keys.join(",")}) VALUES (${keys.map(() => "?").join(",")})`,
+        ...Object.values(values),
+      );
+      await ensureEventSlug(store, id, data.title);
+      await store.audit("event_create", id, req.staff.role);
+      return store.event(id);
+    });
+    res.status(201).json(created);
   });
   app.put("/api/admin/events/:id", staff, admin, async (req, res) => {
     const data = eventSchema.parse(req.body);
@@ -1274,9 +1282,11 @@ export async function createApp({
     if (!req.params.slug && typeof req.query.event !== "string") return next();
     const event = await store.get(
       req.params.slug
-        ? "SELECT e.title,e.subtitle,e.venue,e.hero_image FROM events e JOIN promotion_events a ON a.event_id=e.id WHERE a.slug=? AND e.published=1"
+        ? "SELECT e.title,e.subtitle,e.venue,e.hero_image FROM events e LEFT JOIN promotion_events a ON a.event_id=e.id WHERE (a.slug=? OR e.id=?) AND e.published=1 ORDER BY CASE WHEN a.slug=? THEN 0 ELSE 1 END LIMIT 1"
         : "SELECT title,subtitle,venue,hero_image FROM events WHERE id=? AND published=1",
-      req.params.slug || req.query.event,
+      ...(req.params.slug
+        ? [req.params.slug, req.params.slug, req.params.slug]
+        : [req.query.event]),
     );
     if (!event)
       return req.params.slug
