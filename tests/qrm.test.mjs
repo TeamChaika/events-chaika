@@ -6,6 +6,7 @@ import {
   readStatus,
   createPayment,
   checkMerchant,
+  providerConfig,
 } from "../server/qrm.mjs";
 import { randomUUID } from "node:crypto";
 import { discountedQuote } from "../server/pricing.mjs";
@@ -62,13 +63,110 @@ test("payment URLs reject untrusted domains and dangerous protocols", () => {
     paymentLink("https://qr.nspk.ru/test"),
     "https://qr.nspk.ru/test",
   );
+  assert.equal(
+    paymentLink("https://app.k1pay.ru/payment-page/test/"),
+    "https://app.k1pay.ru/payment-page/test/",
+  );
   for (const u of [
     "javascript:alert(1)",
     "http://qr.nspk.ru/test",
     "https://nspk.ru.evil.example/a",
     "https://user:pass@qr.nspk.ru/a",
+    "https://app.k1pay.ru.evil.example/a",
+    "https://untrusted.k1pay.ru/a",
+    "http://app.k1pay.ru/a",
+    "https://user:pass@app.k1pay.ru/a",
+    "https://app.k1pay.ru:8443/a",
   ])
     assert.throws(() => paymentLink(u));
+});
+test("K1Pay accepts only the exact API origin and preserves saved credentials", () => {
+  const account = {
+    host: "https://app.k1pay.ru",
+    key: "fixture",
+    merchantId: "livadia",
+  };
+  assert.deepEqual(providerConfig("live", account), account);
+  assert.equal(
+    providerConfig("sandbox", account).host,
+    "https://app.devwapiserv.qrm.ooo",
+  );
+  for (const host of [
+    "https://app.k1pay.ru.evil.example",
+    "https://untrusted.k1pay.ru",
+    "http://app.k1pay.ru",
+    "https://user:pass@app.k1pay.ru",
+    "https://app.k1pay.ru:8443",
+    "https://app.k1pay.ru/path",
+    "https://app.k1pay.ru/?key=test",
+    "https://app.k1pay.ru/#test",
+  ])
+    assert.throws(() => providerConfig("live", { ...account, host }));
+});
+test("K1Pay creates and checks a payment on the selected terminal without redirects", async (t) => {
+  const original = global.fetch;
+  t.after(() => {
+    global.fetch = original;
+  });
+  const account = {
+    host: "https://app.k1pay.ru",
+    key: "livadia-fixture",
+    merchantId: "livadia",
+  };
+  const operationId = randomUUID();
+  const calls = [];
+  global.fetch = async (url, init) => {
+    calls.push(url);
+    assert.equal(init.headers["X-Api-Key"], account.key);
+    assert.equal(init.redirect, "error");
+    if (url.endsWith("/users/check-api-key/"))
+      return Response.json({
+        merchant_id: account.merchantId,
+        firm_name: "Fixture",
+        qrt_is_b2c: true,
+        requires_receipt: false,
+        subscription_end_date: "2099-01-01",
+      });
+    if (url.endsWith("/operations/qr-code/"))
+      return Response.json({
+        results: {
+          operation_id: operationId,
+          qr_link: "https://qr.nspk.ru/fixture",
+          payment_page_link: `https://app.k1pay.ru/payment-page/${operationId}/`,
+        },
+      });
+    return Response.json({
+      results: { operation_status_code: 5, operation_sum: 800000 },
+    });
+  };
+  const payment = await createPayment(
+    {
+      id: randomUUID(),
+      mode: "live",
+      total: 800000,
+      unit_price: 800000,
+      quantity: 1,
+      webhook_token: "fixture",
+      access_token: "fixture",
+    },
+    { title: "Fixture" },
+    "https://events.example.com",
+    account,
+  );
+  assert.equal(payment.merchantId, account.merchantId);
+  assert.equal(
+    payment.paymentUrl,
+    `https://app.k1pay.ru/payment-page/${operationId}/`,
+  );
+  assert.equal(
+    (await readStatus(operationId, "live", account)).operation_sum,
+    800000,
+  );
+  assert.deepEqual(calls, [
+    `${account.host}/users/check-api-key/`,
+    `${account.host}/operations/qr-code/`,
+    `${account.host}/api/v2/sse-operations/${operationId}/qr-status/`,
+  ]);
 });
 test("chunked SSE with keepalive is parsed and closed", async (t) => {
   const original = global.fetch;

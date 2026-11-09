@@ -38,7 +38,10 @@ export function providerConfig(mode, account = "default") {
     u.pathname !== "/" ||
     u.search ||
     u.hash ||
-    !["qrm.ooo", "qrmanager.ru"].some((d) => u.hostname.endsWith("." + d)) ||
+    !(
+      u.hostname === "app.k1pay.ru" ||
+      ["qrm.ooo", "qrmanager.ru"].some((d) => u.hostname.endsWith("." + d))
+    ) ||
     (mode === "live" && /dev|test|sandbox/.test(u.hostname))
   )
     throw new ProviderError("failed", "Недопустимый адрес QRM");
@@ -99,8 +102,11 @@ export function paymentLink(value) {
     u.username ||
     u.password ||
     u.port ||
-    !["qrm.ooo", "qrmanager.ru", "nspk.ru"].some(
-      (d) => u.hostname === d || u.hostname.endsWith("." + d),
+    !(
+      u.hostname === "app.k1pay.ru" ||
+      ["qrm.ooo", "qrmanager.ru", "nspk.ru"].some(
+        (d) => u.hostname === d || u.hostname.endsWith("." + d),
+      )
     )
   )
     throw new ProviderError("unknown", "Недопустимая платёжная ссылка");

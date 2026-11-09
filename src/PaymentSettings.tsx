@@ -13,7 +13,7 @@ type Terminal = {
 export function PaymentSettings() {
   const [terminal, setTerminal] = useState<Terminal>();
   const [key, setKey] = useState("");
-  const [host, setHost] = useState("https://app.wapiserv.qrm.ooo");
+  const [host, setHost] = useState("https://app.k1pay.ru");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
