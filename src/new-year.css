@@ -1,0 +1,1089 @@
+.ny-page {
+  --bg: #f7f2e9;
+  --paper: #302b26;
+  --red: #502b2c;
+  --muted: #776a5c;
+  --line: #89704f36;
+  --ny-paper: #f7f2e9;
+  --ny-ink: #302b26;
+  --ny-gold: #8a6743;
+  --ny-muted: #776a5c;
+  --ny-wine: #502b2c;
+  --ny-line: #89704f36;
+  background: var(--ny-paper);
+  color: var(--ny-ink);
+  color-scheme: light;
+  overflow: clip;
+  font-family: "Manrope Variable", sans-serif;
+  font-size: 15px;
+  line-height: 1.7;
+}
+.ny-page ::selection {
+  background: #502b2c;
+  color: #fff6e8;
+}
+.ny-page :is(a, button):focus-visible {
+  outline: 2px solid #92592b;
+  outline-offset: 5px;
+}
+.ny-page :is(h1, h2, h3) {
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 400;
+  letter-spacing: -0.055em;
+}
+.ny-page h2 {
+  font-size: clamp(40px, 5vw, 66px);
+  line-height: 1.08;
+}
+.ny-page h2 em {
+  color: var(--ny-gold);
+}
+.ny-page section[id] {
+  scroll-margin-top: 28px;
+}
+.ny-container {
+  width: min(1160px, calc(100% - 96px));
+  margin-inline: auto;
+}
+.ny-eyebrow {
+  color: var(--ny-gold);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.19em;
+  text-transform: uppercase;
+}
+.ny-preview-label {
+  padding: 5px 16px;
+  text-align: center;
+  background: #e9dfcf;
+  color: #695842;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+.ny-preview-label span {
+  margin-inline: 8px;
+}
+.ny-skip {
+  position: fixed;
+  left: 16px;
+  top: -100px;
+  background: white;
+  padding: 16px;
+  z-index: 20;
+}
+.ny-skip:focus {
+  top: 16px;
+}
+.ny-header {
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 30px;
+  padding: 18px 4vw;
+  border-bottom: 1px solid var(--ny-line);
+  background: #fbf8f2;
+}
+.ny-brand {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  color: #705633;
+}
+.ny-brand strong {
+  font:
+    30px/1.2 Georgia,
+    serif;
+  letter-spacing: 0.055em;
+}
+.ny-brand span {
+  margin-top: 5px;
+  font-size: 7px;
+  font-weight: 650;
+  letter-spacing: 0.18em;
+}
+.ny-header nav {
+  display: flex;
+  align-items: center;
+  gap: 35px;
+  font-size: 12px;
+}
+.ny-header-link {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--ny-gold);
+  padding-block: 10px;
+}
+.ny-header a:hover {
+  color: #9f743e;
+}
+.ny-button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 25px;
+  min-height: 55px;
+  padding: 14px 26px;
+  border: 1px solid var(--ny-wine);
+  border-radius: 0;
+  color: #fff8ef;
+  background: var(--ny-wine);
+  font-size: 12px;
+  font-weight: 550;
+  line-height: 1.5;
+}
+.ny-button:hover {
+  background: #6a383c;
+  border-color: #6a383c;
+}
+.ny-hero {
+  position: relative;
+  isolation: isolate;
+  min-height: min(860px, 90svh);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  padding: 68px 24px 90px;
+  background: #f7efe4;
+}
+.ny-hero-art {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: -1;
+}
+.ny-hero-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  animation: ny-breathe 16s ease-in-out infinite alternate;
+}
+.ny-hero-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    0deg,
+    #f7f2e9 0%,
+    transparent 17%,
+    transparent 95%
+  );
+}
+.ny-hero-copy {
+  position: relative;
+  width: min(780px, 100%);
+  margin: auto;
+  animation: ny-enter 0.9s ease both;
+}
+.ny-hero-eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.24em;
+}
+.ny-ornament {
+  color: #a17e4e;
+  margin: 19px auto 12px;
+  font-size: 24px;
+  line-height: 1;
+}
+.ny-hero h1 {
+  font-size: clamp(74px, 8.6vw, 130px);
+  line-height: 0.96;
+  color: #413426;
+}
+.ny-hero h1 em {
+  color: #987449;
+  font-weight: 400;
+}
+.ny-hero-description {
+  margin-top: 26px;
+  font-size: 14px;
+  line-height: 1.8;
+  color: #645447;
+}
+.ny-hero-date {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 18px;
+  margin: 25px auto 22px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+.ny-hero-date i {
+  width: 4px;
+  height: 4px;
+  transform: rotate(45deg);
+  background: var(--ny-gold);
+}
+.ny-hero-prices {
+  margin-top: 16px;
+  color: #6b5a47;
+  font-size: 10px;
+}
+.ny-hero-prices span {
+  margin-inline: 9px;
+}
+.ny-hero-bottom {
+  position: absolute;
+  bottom: 26px;
+  left: 4vw;
+  right: 4vw;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  color: #76624c;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+.ny-hero-bottom a {
+  display: inline-flex;
+  align-items: center;
+  gap: 15px;
+}
+.ny-introduction {
+  text-align: center;
+  padding-block: 112px 104px;
+}
+.ny-introduction h2 {
+  margin-top: 30px;
+}
+.ny-introduction > p:last-of-type {
+  max-width: 520px;
+  margin: 30px auto 0;
+  font-size: 14px;
+  line-height: 1.9;
+  color: var(--ny-muted);
+}
+.ny-intro-line {
+  display: block;
+  width: 1px;
+  height: 48px;
+  background: #aa895b;
+  margin: 40px auto 0;
+}
+.ny-section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 36px;
+  margin-bottom: 54px;
+}
+.ny-section-heading h2 {
+  margin-top: 25px;
+}
+.ny-section-heading > p {
+  color: var(--ny-muted);
+  font-size: 13px;
+  line-height: 1.9;
+  padding-bottom: 3px;
+}
+.ny-program {
+  padding-block: 90px 32px;
+  background: var(--ny-wine);
+  color: #f9f0e4;
+  position: relative;
+}
+.ny-program::before {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  inset: 10px;
+  border: 1px solid #d6b38333;
+}
+.ny-program .ny-eyebrow,
+.ny-program h2 em {
+  color: #d8b98e;
+}
+.ny-program .ny-section-heading > p {
+  color: #dfcdc4;
+}
+.ny-acts {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 45px;
+  margin: 55px 0 65px;
+}
+.ny-acts li {
+  border-top: 1px solid #e3c7a552;
+  padding-top: 30px;
+}
+.ny-act-number {
+  font:
+    italic 58px/1 Georgia,
+    serif;
+  color: #be9c72;
+}
+.ny-acts h3 {
+  font-size: 28px;
+  line-height: 1.15;
+  margin: 24px 0 20px;
+  max-width: 260px;
+  letter-spacing: -0.03em;
+}
+.ny-acts p {
+  color: #ddccc3;
+  font-size: 12px;
+  line-height: 1.9;
+}
+.ny-program-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  border-top: 1px solid #e3c7a535;
+  padding-top: 22px;
+  color: #d2b99f;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.ny-menu {
+  padding-block: 110px;
+}
+.ny-menu-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 22px;
+  margin-bottom: 45px;
+}
+.ny-menu-switch {
+  display: inline-flex;
+  border-bottom: 1px solid var(--ny-line);
+}
+.ny-menu-switch button {
+  border: 0;
+  background: none;
+  color: var(--ny-muted);
+  padding: 15px 26px 18px;
+  font-size: 14px;
+  position: relative;
+  text-align: left;
+}
+.ny-menu-switch button span {
+  display: block;
+  font-size: 10px;
+  margin-top: 4px;
+}
+.ny-menu-switch button[aria-pressed="true"] {
+  color: var(--ny-wine);
+  background: #eee5d8;
+}
+.ny-menu-switch button[aria-pressed="true"]::after {
+  content: "";
+  position: absolute;
+  height: 2px;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  background: var(--ny-wine);
+}
+.ny-text-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  border-bottom: 1px solid var(--ny-line);
+  padding-block: 8px;
+}
+.ny-menu-book {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 80px;
+  row-gap: 40px;
+  padding: 48px 50px;
+  border: 1px solid var(--ny-line);
+  background: #fffcf6;
+  position: relative;
+}
+.ny-menu-book::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 48px;
+  bottom: 48px;
+  width: 1px;
+  background: var(--ny-line);
+}
+.ny-course-title {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 15px;
+}
+.ny-course-title > span {
+  font-size: 9px;
+  color: #9a805c;
+  letter-spacing: 0.08em;
+}
+.ny-course h3 {
+  font-size: 29px;
+  color: #775839;
+  letter-spacing: -0.03em;
+  line-height: 1.25;
+}
+.ny-course-note {
+  color: var(--ny-muted);
+  font-size: 10px;
+  margin: -7px 0 15px;
+}
+.ny-course ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.ny-course li + li {
+  margin-top: 14px;
+}
+.ny-course li > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 18px;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.ny-course small {
+  color: var(--ny-muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.ny-course li > p {
+  color: var(--ny-muted);
+  font-size: 10px;
+  line-height: 1.7;
+  margin-top: 4px;
+}
+.ny-menu-complement {
+  padding: 23px 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 18px;
+  background: #ece2d0;
+  color: #775839;
+  font-size: 13px;
+}
+.ny-menu-complement small {
+  display: block;
+  font-size: 10px;
+  color: #77634a;
+  margin-top: 4px;
+}
+.ny-family {
+  background: #eee6d9;
+  padding-block: 84px;
+}
+.ny-family-grid {
+  display: grid;
+  grid-template-columns: 0.75fr 1fr;
+  gap: 95px;
+  align-items: center;
+}
+.ny-family-poster {
+  transform: rotate(-3deg);
+  width: min(100%, 330px);
+  justify-self: center;
+  box-shadow: 0 18px 45px #5c432e22;
+  border: 7px solid #fffcf7;
+}
+.ny-family-poster a {
+  display: block;
+}
+.ny-family-poster img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.ny-family-copy h2 {
+  font-size: clamp(34px, 4vw, 49px);
+  margin: 26px 0;
+}
+.ny-family-copy > p:not(.ny-eyebrow) {
+  font-size: 13px;
+  line-height: 1.85;
+  max-width: 430px;
+  color: #766453;
+}
+.ny-family-copy ul {
+  list-style: none;
+  padding: 0;
+  margin: 27px 0;
+  font-size: 12px;
+}
+.ny-family-copy li {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin-top: 13px;
+}
+.ny-family-copy svg {
+  color: #8a6743;
+}
+.ny-tickets {
+  padding-block: 110px;
+}
+.ny-ticket-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+}
+.ny-ticket {
+  border: 1px solid #b8a181;
+  padding: 28px 36px 0;
+  background: #fffcf7;
+}
+.ny-ticket-top {
+  display: flex;
+  justify-content: space-between;
+  font-size: 8px;
+  color: #8a7151;
+  letter-spacing: 0.12em;
+}
+.ny-ticket h3 {
+  font-size: 45px;
+  margin: 35px 0 15px;
+  line-height: 1;
+}
+.ny-ticket > p {
+  font-size: 12px;
+  color: var(--ny-muted);
+  line-height: 1.8;
+  min-height: 66px;
+  max-width: 350px;
+}
+.ny-ticket-price {
+  margin-block: 27px;
+}
+.ny-ticket-price strong {
+  font:
+    45px/1.2 Georgia,
+    serif;
+  letter-spacing: -0.04em;
+}
+.ny-ticket-price > span {
+  display: block;
+  font-size: 10px;
+  color: var(--ny-muted);
+  margin-top: 5px;
+}
+.ny-ticket > .ny-button {
+  width: 100%;
+  justify-content: space-between;
+}
+.ny-ticket:nth-child(2) .ny-button {
+  background: none;
+  color: var(--ny-wine);
+}
+.ny-ticket:nth-child(2) .ny-button:hover {
+  background: #eee2d2;
+}
+.ny-ticket-bottom {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 32px;
+  padding-block: 18px;
+  border-top: 1px dashed #b8a181;
+  font-size: 9px;
+  color: var(--ny-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.ny-location {
+  text-align: center;
+  padding-block: 100px 90px;
+  border-block: 1px solid var(--ny-line);
+  background: radial-gradient(ellipse at center, #e8dbc5 0%, #f7f2e9 72%);
+}
+.ny-location h2 {
+  margin-top: 25px;
+}
+.ny-address {
+  margin-top: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+}
+.ny-phone {
+  display: block;
+  width: fit-content;
+  margin: 20px auto 0;
+  font-family: Georgia, serif;
+  font-size: 28px;
+  letter-spacing: -0.03em;
+}
+.ny-location-date {
+  margin-top: 30px;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ny-gold);
+}
+.ny-footer {
+  padding: 40px 4vw;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 25px;
+  font-size: 10px;
+  color: var(--ny-muted);
+}
+.ny-footer > span {
+  font-size: 9px;
+  letter-spacing: 0.2em;
+}
+.ny-mobile-booking {
+  display: none;
+}
+.ny-page .modal {
+  background: var(--ny-paper);
+  color: var(--ny-ink);
+  border: 1px solid #b9a180;
+  border-radius: 2px;
+  max-width: 550px;
+  color-scheme: light;
+}
+.ny-page .modal-inner {
+  padding: 30px;
+}
+.ny-page .modal h2 {
+  font-size: 38px;
+}
+.ny-page .modal-heading {
+  color: var(--ny-gold);
+}
+.ny-page .modal .icon-button {
+  color: var(--ny-ink);
+  background: none;
+  border-color: var(--ny-line);
+}
+@keyframes ny-breathe {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.035);
+  }
+}
+@keyframes ny-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (min-width: 1700px) {
+  .ny-hero {
+    min-height: 960px;
+  }
+  .ny-hero-art img {
+    object-fit: cover;
+  }
+}
+@media (max-width: 1000px) {
+  .ny-container {
+    width: calc(100% - 64px);
+  }
+  .ny-header nav {
+    gap: 20px;
+  }
+  .ny-hero {
+    min-height: 760px;
+  }
+  .ny-hero-art img {
+    object-fit: cover;
+  }
+  .ny-hero-copy {
+    width: 85%;
+  }
+  .ny-hero h1 {
+    font-size: 95px;
+  }
+  .ny-acts {
+    gap: 28px;
+  }
+  .ny-menu-book {
+    column-gap: 48px;
+    padding: 35px;
+  }
+  .ny-family-grid {
+    gap: 55px;
+  }
+  .ny-ticket {
+    padding-inline: 26px;
+  }
+}
+@media (max-width: 700px) {
+  .ny-container {
+    width: calc(100% - 40px);
+  }
+  .ny-header {
+    height: 80px;
+    padding-inline: 20px;
+    gap: 18px;
+  }
+  .ny-header nav {
+    display: none;
+  }
+  .ny-brand strong {
+    font-size: 25px;
+  }
+  .ny-brand span {
+    font-size: 6px;
+  }
+  .ny-header-link {
+    font-size: 10px;
+    gap: 8px;
+  }
+  .ny-hero {
+    min-height: 730px;
+    padding: 95px 20px 92px;
+  }
+  .ny-hero-art img {
+    object-fit: cover;
+    object-position: center;
+    width: 100%;
+    max-width: none;
+    margin-left: 0;
+    opacity: 0.9;
+  }
+  .ny-hero-art::after {
+    background:
+      linear-gradient(0deg, #f7f2e9, transparent 20%, transparent 90%),
+      linear-gradient(
+        90deg,
+        transparent,
+        #f9f2e56b 28%,
+        #f9f2e56b 72%,
+        transparent
+      );
+  }
+  .ny-hero-copy {
+    width: 100%;
+  }
+  .ny-hero-eyebrow {
+    font-size: 9px;
+    letter-spacing: 0.13em;
+  }
+  .ny-hero h1 {
+    font-size: clamp(62px, 13.7vw, 94px);
+  }
+  .ny-ornament {
+    margin: 26px auto 20px;
+  }
+  .ny-hero-description {
+    font-size: 13px;
+    margin-top: 25px;
+  }
+  .ny-hero-date {
+    font-size: 10px;
+    gap: 13px;
+    margin-block: 26px;
+  }
+  .ny-hero .ny-button {
+    padding-inline: 22px;
+  }
+  .ny-hero-prices {
+    font-size: 9px;
+  }
+  .ny-hero-prices span {
+    margin-inline: 5px;
+  }
+  .ny-hero-bottom {
+    justify-content: center;
+    bottom: 25px;
+    font-size: 9px;
+  }
+  .ny-hero-bottom > span {
+    display: none;
+  }
+  .ny-introduction {
+    padding-block: 70px;
+  }
+  .ny-introduction > p:last-of-type {
+    font-size: 13px;
+  }
+  .ny-eyebrow {
+    font-size: 9px;
+  }
+  .ny-program {
+    padding-block: 70px 30px;
+  }
+  .ny-section-heading {
+    display: block;
+    margin-bottom: 35px;
+  }
+  .ny-section-heading > p {
+    margin-top: 22px;
+    font-size: 12px;
+  }
+  .ny-acts {
+    grid-template-columns: 1fr;
+    gap: 27px;
+    margin: 40px 0;
+  }
+  .ny-acts li {
+    padding: 27px 0 0 54px;
+    position: relative;
+  }
+  .ny-act-number {
+    font-size: 35px;
+    position: absolute;
+    left: 0;
+    top: 28px;
+  }
+  .ny-acts h3 {
+    font-size: 29px;
+    margin: 0 0 14px;
+    max-width: none;
+  }
+  .ny-program-foot {
+    display: block;
+    line-height: 2;
+    font-size: 8px;
+  }
+  .ny-program-foot span {
+    display: block;
+  }
+  .ny-menu {
+    padding-block: 70px;
+  }
+  .ny-menu-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 17px;
+    margin-bottom: 27px;
+  }
+  .ny-menu-switch {
+    display: flex;
+  }
+  .ny-menu-switch button {
+    flex: 1;
+    font-size: 13px;
+    padding: 15px 17px;
+  }
+  .ny-menu-toolbar > a {
+    align-self: flex-start;
+  }
+  .ny-menu-book {
+    display: block;
+    padding: 28px 22px;
+  }
+  .ny-menu-book::before {
+    display: none;
+  }
+  .ny-course + .ny-course {
+    padding-top: 27px;
+    margin-top: 27px;
+    border-top: 1px solid var(--ny-line);
+  }
+  .ny-course h3 {
+    font-size: 29px;
+  }
+  .ny-course li > div {
+    font-size: 12px;
+    gap: 12px;
+  }
+  .ny-menu-complement {
+    padding: 22px;
+    align-items: flex-start;
+    gap: 12px;
+    font-size: 12px;
+  }
+  .ny-family {
+    padding-block: 55px;
+  }
+  .ny-family-grid {
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 38px;
+  }
+  .ny-family-copy h2 {
+    font-size: 39px;
+  }
+  .ny-family-poster {
+    width: 250px;
+  }
+  .ny-tickets {
+    padding-block: 70px;
+  }
+  .ny-ticket-grid {
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+  .ny-ticket {
+    padding-top: 25px;
+  }
+  .ny-ticket h3 {
+    margin-top: 28px;
+  }
+  .ny-ticket > p {
+    min-height: auto;
+  }
+  .ny-location {
+    padding-block: 65px;
+  }
+  .ny-address {
+    font-size: 11px;
+    gap: 8px;
+  }
+  .ny-address svg {
+    width: 15px;
+  }
+  .ny-footer {
+    padding: 35px 20px 125px;
+    flex-direction: column;
+    gap: 20px;
+    text-align: center;
+  }
+  .ny-mobile-booking {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+    padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
+    border-top: 1px solid #bda47d66;
+    background: #fbf6eef5;
+    backdrop-filter: blur(12px);
+  }
+  .ny-mobile-booking > span {
+    font-size: 9px;
+    line-height: 1.6;
+  }
+  .ny-mobile-booking b {
+    font-size: 17px;
+    font-weight: 500;
+    margin-left: 3px;
+  }
+  .ny-mobile-booking small {
+    display: block;
+    font-size: 10px;
+    color: var(--ny-muted);
+  }
+  .ny-mobile-booking .ny-button {
+    min-height: 47px;
+    padding-inline: 21px;
+    gap: 19px;
+  }
+  .ny-page .modal-inner {
+    padding: 23px;
+  }
+  .ny-page .modal h2 {
+    font-size: 33px;
+  }
+}
+@media (max-width: 360px) {
+  .ny-hero h1 {
+    font-size: 55px;
+  }
+  .ny-header-link {
+    font-size: 9px;
+  }
+  .ny-brand strong {
+    font-size: 22px;
+  }
+  .ny-mobile-booking {
+    padding-inline: 12px;
+    gap: 10px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ny-page *,
+  .ny-page *::before,
+  .ny-page *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  html:has(.ny-page) {
+    scroll-behavior: auto;
+  }
+}
+
+.ny-page input,
+.ny-page select,
+.ny-page textarea {
+  background: #fffdf9;
+  color: var(--ny-ink);
+  border-color: #89704f66;
+}
+.ny-page .checkout-event {
+  background: #eee5d8;
+}
+.ny-page .primary {
+  background: var(--ny-wine);
+  color: #fff8ef;
+}
+.ny-page .primary:hover:not(:disabled) {
+  background: #6a383c;
+  box-shadow: none;
+}
+.ny-page .secondary {
+  background: #eee5d8;
+  border-color: var(--ny-line);
+}
+.ny-page .ticket-options label {
+  background: #fffcf6;
+  border-color: var(--ny-line);
+}
+.ny-page .ticket-options label.selected {
+  background: #eee5d8;
+  border-color: var(--ny-gold);
+}
+.ny-page .checkout-event strong {
+  color: var(--ny-ink);
+}
+.ny-page .cookie-notice {
+  color: #f3f0e9;
+}
+.ny-page .cookie-notice .button {
+  color: #302b26;
+}
+.ny-legal-footer {
+  padding: 0 4vw 30px;
+}
+.ny-legal-footer .legal-links {
+  justify-content: center;
+  color: var(--ny-muted);
+}
+@media (max-width: 700px) {
+  .ny-footer {
+    padding-bottom: 24px;
+  }
+  .ny-legal-footer {
+    padding-bottom: 125px;
+  }
+  .ny-page .cookie-notice {
+    bottom: calc(92px + env(safe-area-inset-bottom));
+  }
+}
+
+.ny-page .checkout-event span,
+.ny-page .quantity-row > div > span,
+.ny-page .checkout-foot,
+.ny-page .checkout-legal-note,
+.ny-page .price-breakdown,
+.ny-page .ticket-options > small {
+  color: #756352;
+}
+.ny-page .promo-summary {
+  color: var(--ny-wine);
+}

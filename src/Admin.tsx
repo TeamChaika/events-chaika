@@ -1316,6 +1316,9 @@ function EventEditor({
             <select name="layout" defaultValue={e?.layout || "default"}>
               <option value="default">Стандартное</option>
               <option value="odisseya">Одиссея · Ливадия</option>
+              <option value="new-year">
+                Богемные истории · Новый год в Ливадии
+              </option>
             </select>
           </label>
         </div>

@@ -70,6 +70,8 @@ const LandingPreviewSections = React.lazy(
   () => import("./LandingPreviewSections"),
 );
 
+const NewYearLanding = React.lazy(() => import("./NewYearLanding"));
+
 function Countdown({ event }: { event: EventData }) {
   const [time, setTime] = useState(Date.now());
   useEffect(() => {
@@ -266,6 +268,7 @@ function EventLanding({
   onArtworkReady: () => void;
 }) {
   const [buy, setBuy] = useState(false);
+  const [buyOption, setBuyOption] = useState("");
   const [paused] = useState(
     () => matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
@@ -273,6 +276,36 @@ function EventLanding({
     Boolean(event.sales_open) &&
     event.available > 0 &&
     new Date(`${event.date}T${event.time}:00+03:00`) > new Date();
+  if (event.layout === "new-year")
+    return (
+      <React.Suspense
+        fallback={
+          <div className="loading-screen">
+            <Spinner />
+          </div>
+        }
+      >
+        <NewYearLanding
+          event={event}
+          canBuy={canBuy}
+          preview={config.demo || config.paymentMode === "sandbox"}
+          onBuy={(option) => {
+            setBuyOption(option);
+            setBuy(true);
+          }}
+        >
+          <CookieNotice />
+          {buy && (
+            <Checkout
+              event={event}
+              config={config}
+              initialTicketOption={buyOption}
+              close={() => setBuy(false)}
+            />
+          )}
+        </NewYearLanding>
+      </React.Suspense>
+    );
   if (event.layout === "odisseya")
     return (
       <div className="odisseya-theme">
@@ -456,10 +489,12 @@ function Checkout({
   event,
   config,
   close,
+  initialTicketOption,
 }: {
   event: EventData;
   config: Config;
   close: () => void;
+  initialTicketOption?: string;
 }) {
   const [quantity, setQuantity] = useState(1),
     [loading, setLoading] = useState(false),
@@ -468,7 +503,10 @@ function Checkout({
   const [promoInput, setPromoInput] = useState("");
   const [promoCode, setPromoCode] = useState("");
   const [ticketOption, setTicketOption] = useState(
-    event.ticket_options?.[0]?.id || "",
+    event.ticket_options?.find((option) => option.id === initialTicketOption)
+      ?.id ||
+      event.ticket_options?.[0]?.id ||
+      "",
   );
   const { quote, quoteError, refreshQuote } = usePriceQuote(
     event.id,
@@ -553,7 +591,9 @@ function Checkout({
       title={
         event.layout === "odisseya"
           ? "Билеты на «Одиссею»"
-          : "Ваш пропуск в ночь"
+          : event.layout === "new-year"
+            ? `Билеты на «${event.title}»`
+            : "Ваш пропуск в ночь"
       }
       close={close}
     >

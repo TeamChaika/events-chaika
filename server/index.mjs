@@ -99,7 +99,7 @@ const eventSchema = z.object({
   dresscode: z.string().max(200),
   age: z.number().int().min(-1).max(21),
   payment_account: z.enum(["default", "livadia"]).optional(),
-  layout: z.enum(["default", "odisseya"]).optional(),
+  layout: z.enum(["default", "odisseya", "new-year"]).optional(),
   contact_phone: z
     .string()
     .trim()
@@ -110,7 +110,7 @@ const eventSchema = z.object({
   hero_image: z
     .string()
     .regex(
-      /^\/(?:assets\/(?:red-moon\.png|odisseya\.jpg)|media\/[a-f0-9]{48}\.(?:png|jpg|webp))$/,
+      /^\/(?:assets\/(?:red-moon\.png|odisseya\.jpg|livadia-new-year\/theatre-hero\.webp)|media\/[a-f0-9]{48}\.(?:png|jpg|webp))$/,
     )
     .default("/assets/red-moon.png"),
 });

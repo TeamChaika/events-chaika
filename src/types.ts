@@ -49,7 +49,7 @@ export type EventData = {
   sales_open: boolean | number;
   hero_image: string;
   payment_account?: "default" | "livadia";
-  layout?: "default" | "odisseya";
+  layout?: "default" | "odisseya" | "new-year";
   contact_phone?: string;
 };
 export const eventPath = (event: Pick<EventData, "id" | "public_slug">) =>

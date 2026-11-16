@@ -4072,3 +4072,64 @@ test("Mriya marketing opt-in is event-scoped; old evidence is immutable and cann
     "fixture.1",
   );
 });
+
+test("new-year layout preserves event settings and prices adult and child tickets from the server", async (t) => {
+  const h = await harness(t);
+  await h.login();
+  const base = await h.store.event("red-moon");
+  const input = {
+    ...base,
+    title: "Ливадия Новогодняя ночь",
+    subtitle: "Новогодняя ночь в Ливадии",
+    price: 1200000,
+    price_tiers: null,
+    capacity: 200,
+    time: "21:00",
+    layout: "new-year",
+    payment_account: "livadia",
+    age: -1,
+    hero_image: "/assets/livadia-new-year/theatre-hero.webp",
+    ticket_options: [
+      { id: "child", label: "Детский", surcharge: 0 },
+      { id: "adult", label: "Взрослый", surcharge: 800000 },
+    ],
+    published: true,
+    sales_open: false,
+  };
+  const created = await h.request("/admin/events", {
+    method: "POST",
+    body: input,
+  });
+  assert.equal(created.status, 201);
+  const id = created.body.id;
+  const renamed = await h.request(`/admin/events/${id}`, {
+    method: "PUT",
+    body: { ...input, title: "Богемные истории" },
+  });
+  assert.equal(renamed.status, 200);
+  assert.equal(renamed.body.public_slug, "livadiya-novogodnyaya-noch");
+  assert.equal(renamed.body.layout, "new-year");
+  assert.equal(renamed.body.capacity, 200);
+  assert.equal(renamed.body.sales_open, 0);
+  assert.equal(renamed.body.payment_account, "livadia");
+  for (const [option, price] of [
+    ["child", 1200000],
+    ["adult", 2000000],
+  ]) {
+    const quote = await h.request(
+      `/events/${id}/quote?quantity=2&ticket_option=${option}`,
+    );
+    assert.equal(quote.status, 200);
+    assert.equal(quote.body.total, price * 2);
+    assert.equal(quote.body.ticket_option, option);
+  }
+  assert.equal(
+    (await h.store.get("SELECT COUNT(*) n FROM orders WHERE event_id=?", id)).n,
+    0,
+  );
+  await h.request("/auth/logout", { method: "POST" });
+  const closed = await h.request(
+    `/events/${id}/quote?quantity=1&ticket_option=adult`,
+  );
+  assert.equal(closed.status, 409);
+});
