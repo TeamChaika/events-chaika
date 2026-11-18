@@ -5,8 +5,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApp } from "../server/index.mjs";
+import { processOutbox } from "../server/delivery.mjs";
+import { telegram } from "../server/telegram.mjs";
 import { currentLegalDocuments } from "../server/legal.mjs";
-import pg from "pg";
+import { testDatabase } from "./database-fixture.mjs";
 import { paymentSettings } from "../server/payment-settings.mjs";
 
 const origin = "http://localhost:5173";
@@ -346,6 +348,378 @@ test("admin event settings preserve terminal and layout for older clients and re
     400,
   );
 });
+test("only admins can configure or read an event's order notification chat", async (t) => {
+  const h = await harness(t);
+  const chatId = "-1009876543210";
+  const input = {
+    ...(await h.store.event("red-moon")),
+    published: true,
+    sales_open: true,
+  };
+  const create = (telegram_chat_id) =>
+    h.request("/admin/events", {
+      method: "POST",
+      body: { ...input, telegram_chat_id },
+    });
+  const edit = (id, telegram_chat_id) =>
+    h.request(`/admin/events/${id}`, {
+      method: "PUT",
+      body: { ...input, telegram_chat_id },
+    });
+  assert.equal((await create(chatId)).status, 401);
+  assert.equal((await edit("red-moon", chatId)).status, 401);
+  await h.login("door");
+  assert.equal((await create(chatId)).status, 403);
+  assert.equal((await edit("red-moon", chatId)).status, 403);
+  await h.login();
+  const created = await create(chatId);
+  assert.equal(created.status, 201);
+  assert.equal(created.body.telegram_chat_id, chatId);
+  const id = created.body.id;
+  const overview = (await h.request("/admin/overview")).body;
+  assert.equal(
+    overview.events.find((e) => e.id === id).telegram_chat_id,
+    chatId,
+  );
+  assert.equal(
+    overview.events.find((e) => e.id === "red-moon").telegram_chat_id,
+    null,
+  );
+  assert.equal((await edit(id, undefined)).body.telegram_chat_id, chatId);
+  for (const invalid of ["@chat", 123, "0", "-4503599627370496", " 42"])
+    assert.equal((await edit(id, invalid)).status, 400);
+  const privateChat = "4503599627370495";
+  assert.equal(
+    (await edit(id, privateChat)).body.telegram_chat_id,
+    privateChat,
+  );
+  const assertPrivate = (body) => {
+    const json = JSON.stringify(body);
+    assert.ok(
+      !json.includes("telegram_chat_id") && !json.includes(privateChat),
+    );
+  };
+  assertPrivate((await h.request("/events")).body);
+  await h.login("door");
+  assertPrivate((await h.request("/admin/overview")).body);
+  await h.request("/auth/logout", { method: "POST" });
+  const order = await h.order({ ...guest, event_id: id });
+  assert.equal(order.status, 201);
+  assertPrivate(order.body);
+  await h.store.markPaid(order.body.id);
+  const paid = (await h.request(`/orders/${order.body.access_token}`)).body;
+  assertPrivate(paid);
+  assertPrivate((await h.request(`/tickets/${paid.tickets[0].code}`)).body);
+  await h.login();
+  assert.equal((await edit(id, null)).body.telegram_chat_id, null);
+  assert.equal((await edit(id, undefined)).body.telegram_chat_id, null);
+});
+
+test("partial admin event changes preserve concurrently closed sales, artwork and independent fields", async (t) => {
+  const h = await harness(t);
+  const patch = (body, id = "red-moon") =>
+    h.request(`/admin/events/${id}`, { method: "PATCH", body });
+  assert.equal((await patch({ telegram_chat_id: "-123" })).status, 401);
+  await h.login("door");
+  assert.equal((await patch({ telegram_chat_id: "-123" })).status, 403);
+  await h.login();
+  await patch({
+    sales_open: false,
+    hero_image: "/assets/odisseya.jpg",
+    contact_phone: "+79990000000",
+  });
+  const updated = await patch({
+    telegram_chat_id: "-123",
+    description: "Изменено организатором",
+  });
+  assert.equal(updated.status, 200);
+  assert.equal(updated.body.sales_open, 0);
+  assert.equal(updated.body.hero_image, "/assets/odisseya.jpg");
+  assert.equal(updated.body.contact_phone, "+79990000000");
+  assert.equal(updated.body.telegram_chat_id, "-123");
+  assert.equal(updated.body.description, "Изменено организатором");
+  assert.equal(
+    (await patch({ telegram_chat_id: null })).body.telegram_chat_id,
+    null,
+  );
+  assert.equal((await patch({})).status, 400);
+  assert.equal((await patch({ unsupported: true })).status, 400);
+  assert.equal(
+    (await patch({ title: "Некорректный чат", telegram_chat_id: "@bad" }))
+      .status,
+    400,
+  );
+  assert.notEqual((await h.store.event("red-moon")).title, "Некорректный чат");
+  assert.equal(
+    (await patch({ telegram_chat_id: "123" }, "missing")).status,
+    404,
+  );
+});
+
+test("verified historical messages resume only for the exact order, chat and available message ID", async (t) => {
+  const h = await harness(t);
+  await h.store.setEventChat("red-moon", "-9999");
+  const source = (await h.order()).body.id,
+    other = (await h.order()).body.id;
+  await h.store.run(
+    "UPDATE outbox SET status='unknown',attempts=1,error='Результат не подтверждён' WHERE order_id=?",
+    source,
+  );
+  await h.store.run(
+    "UPDATE outbox SET status='sent',attempts=1,provider_id='55' WHERE order_id=?",
+    other,
+  );
+  await h.store.enqueue(source, "review");
+  await h.store.run(
+    "UPDATE outbox SET status='waiting_message' WHERE order_id=? AND kind='review'",
+    source,
+  );
+  const job = await h.store.get(
+    "SELECT id FROM outbox WHERE order_id=? AND kind='review'",
+    source,
+  );
+  const path = `/admin/deliveries/${job.id}/retry`;
+  const resolve = (confirmed_chat_id, confirmed_message_id) =>
+    h.request(path, {
+      method: "POST",
+      body: { confirmed_chat_id, confirmed_message_id },
+    });
+  assert.equal((await resolve("-9999", "42")).status, 401);
+  await h.login("door");
+  assert.equal((await resolve("-9999", "42")).status, 403);
+  await h.login();
+  const operator = employeeInput("telegram.operator", "admin");
+  const account = await h.request("/admin/staff", {
+    method: "POST",
+    body: operator,
+  });
+  assert.equal(account.status, 201);
+  assert.equal(
+    (
+      await h.request("/auth/login", {
+        method: "POST",
+        body: { username: operator.username, password: operator.password },
+      })
+    ).status,
+    200,
+  );
+  assert.equal((await resolve("-888", "42")).status, 409);
+  assert.equal((await resolve("-9999", "55")).status, 409);
+  assert.equal((await resolve("-9999", "0")).status, 400);
+  const sourceJob = await h.store.get(
+    "SELECT id FROM outbox WHERE order_id=? AND kind='created'",
+    source,
+  );
+  await h.store.run(
+    "INSERT INTO outbox(id,order_id,channel,kind,status,attempts) VALUES (?,?,'telegram','old_stage','unknown',1)",
+    randomUUID(),
+    source,
+  );
+  assert.equal((await resolve("-9999", "42")).status, 409);
+  assert.equal(
+    (
+      await h.request(path, {
+        method: "POST",
+        body: {
+          confirmed_chat_id: "-9999",
+          confirmed_message_id: "42",
+          source_delivery_id: sourceJob.id,
+        },
+      })
+    ).status,
+    200,
+  );
+  const original = await h.store.get(
+    "SELECT provider_id,status,error,sent_at FROM outbox WHERE order_id=? AND kind='created'",
+    source,
+  );
+  assert.deepEqual(
+    [original.provider_id, original.status, original.error, original.sent_at],
+    ["42", "sent", null, null],
+  );
+  assert.equal(
+    (
+      await h.store.get(
+        "SELECT actor FROM audit WHERE action='telegram_message_verified' AND entity=?",
+        job.id,
+      )
+    ).actor,
+    `staff:${account.body.id}`,
+  );
+  assert.equal(
+    (await h.store.get("SELECT status FROM outbox WHERE id=?", job.id)).status,
+    "tg_retry",
+  );
+});
+
+test("an operator retry keeps the only known message ID and the original chat", async (t) => {
+  const h = await harness(t);
+  const chat = "-1008765432109";
+  await h.store.setEventChat("red-moon", chat);
+  const order = await h.order();
+  await h.store.run("UPDATE orders SET mode='live' WHERE id=?", order.body.id);
+  await h.store.run(
+    "UPDATE outbox SET provider_id='55',status='unknown',attempts=9 WHERE order_id=? AND channel='telegram'",
+    order.body.id,
+  );
+  const delivery = await h.store.get(
+    "SELECT id FROM outbox WHERE order_id=?",
+    order.body.id,
+  );
+  const path = `/admin/deliveries/${delivery.id}/retry`;
+  await h.login();
+  await h.store.setEventChat("red-moon", "123");
+  assert.equal(
+    (await h.request(path, { method: "POST", body: {} })).status,
+    409,
+  );
+  assert.equal(
+    (await h.request(path, { method: "POST", body: { confirm: true } })).status,
+    200,
+  );
+  const before = [process.env.DELIVERY_ENABLED, process.env.TELEGRAM_BOT_TOKEN];
+  process.env.DELIVERY_ENABLED = "true";
+  process.env.TELEGRAM_BOT_TOKEN = "123:fixture";
+  t.after(() => {
+    for (const [i, key] of [
+      "DELIVERY_ENABLED",
+      "TELEGRAM_BOT_TOKEN",
+    ].entries()) {
+      if (before[i] === undefined) delete process.env[key];
+      else process.env[key] = before[i];
+    }
+  });
+  const send = t.mock.method(telegram, "send", async () => {
+    throw new Error("unexpected_send");
+  });
+  const edit = t.mock.method(telegram, "edit", async (id, _text, to) => {
+    assert.equal(id, "55");
+    assert.equal(to, chat);
+    return { status: "sent", providerId: id };
+  });
+  await processOutbox(h.store, origin, false);
+  assert.equal(send.mock.callCount(), 0);
+  assert.equal(edit.mock.callCount(), 1);
+  assert.equal(
+    (await h.store.get("SELECT status FROM outbox WHERE id=?", delivery.id))
+      .status,
+    "sent",
+  );
+});
+
+test("upgrading the pre-routing schema preserves pending orders and never guesses the chat of a historical delivery", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "chaika-telegram-upgrade-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const dbPath = join(directory, "events.sqlite");
+  const keys = [
+    "DELIVERY_ENABLED",
+    "TELEGRAM_BOT_TOKEN",
+    "TELEGRAM_CHAT_ID",
+    "TELEGRAM_LEGACY_CHAT_ID",
+  ];
+  const before = keys.map((key) => process.env[key]);
+  t.after(() => {
+    keys.forEach((key, i) => {
+      if (before[i] === undefined) delete process.env[key];
+      else process.env[key] = before[i];
+    });
+  });
+  Object.assign(process.env, {
+    DELIVERY_ENABLED: "true",
+    TELEGRAM_BOT_TOKEN: "123:fixture",
+    TELEGRAM_CHAT_ID: "-7001",
+  });
+  delete process.env.TELEGRAM_LEGACY_CHAT_ID;
+  const first = await harness(t, { dbPath });
+  const delivered = (await first.order()).body.id;
+  const pending = (await first.order()).body.id;
+  const uncertain = (await first.order()).body.id;
+  await first.store.run("UPDATE orders SET mode='live'");
+  await first.store.run(
+    "UPDATE outbox SET status='sent',attempts=1,provider_id='64' WHERE order_id=?",
+    delivered,
+  );
+  await first.store.run(
+    "UPDATE outbox SET status='unknown',attempts=1 WHERE order_id=?",
+    uncertain,
+  );
+  await first.store.db.exec(
+    "DROP TABLE order_telegram_destinations; DROP TABLE event_telegram_settings",
+  );
+  const next = await createApp({
+    dbPath,
+    databaseUrl: first.databaseUrl,
+    demo: true,
+    testing: true,
+  });
+  try {
+    await next.store.setEventChat("red-moon", "-8002");
+    process.env.TELEGRAM_CHAT_ID = "-9003";
+    await next.store.enqueue(delivered, "review");
+    await next.store.enqueue(uncertain, "review");
+    const sends = [],
+      edits = [];
+    t.mock.method(telegram, "send", async (_text, chat) => {
+      sends.push(chat);
+      return { status: "sent", providerId: "64" };
+    });
+    t.mock.method(telegram, "edit", async (id, _text, chat) => {
+      edits.push([chat, id]);
+      return { status: "sent", providerId: id };
+    });
+    await processOutbox(next.store, origin, false);
+    assert.deepEqual(sends, ["-7001"]);
+    assert.deepEqual(edits, []);
+    const historical = await next.store.get(
+      "SELECT status,error,next_at,attempts FROM outbox WHERE order_id=? AND kind='review'",
+      delivered,
+    );
+    assert.equal(historical.status, "waiting_chat");
+    assert.equal(historical.attempts, 0);
+    assert.match(historical.error, /Исходный чат/);
+    await next.store.enqueue(pending, "review");
+    await processOutbox(next.store, origin, false);
+    assert.deepEqual(edits, [["-7001", "64"]]);
+    process.env.TELEGRAM_LEGACY_CHAT_ID = "-6000";
+    const confirmed = await createApp({
+      dbPath,
+      databaseUrl: first.databaseUrl,
+      demo: true,
+      testing: true,
+    });
+    try {
+      await processOutbox(confirmed.store, origin, false);
+      assert.deepEqual(edits, [
+        ["-7001", "64"],
+        ["-6000", "64"],
+      ]);
+      assert.deepEqual(sends, ["-7001"]);
+      assert.match(
+        (
+          await confirmed.store.get(
+            "SELECT error FROM outbox WHERE order_id=? AND kind='review'",
+            uncertain,
+          )
+        ).error,
+        /нет подтверждённого ID/,
+      );
+      assert.equal(
+        (
+          await confirmed.store.get(
+            "SELECT status FROM outbox WHERE order_id=? AND kind='created'",
+            uncertain,
+          )
+        ).status,
+        "unknown",
+      );
+    } finally {
+      await confirmed.close();
+    }
+  } finally {
+    await next.close();
+  }
+});
+
 test("new events get public slugs automatically, keep them after edits and support both URL formats", async (t) => {
   const h = await harness(t);
   await h.login();
@@ -393,21 +767,7 @@ test("new events get public slugs automatically, keep them after edits and suppo
 });
 
 async function harness(t, options = {}) {
-  let databaseUrl, cleanupDatabase;
-  if (process.env.TEST_DATABASE_URL) {
-    const url = new URL(process.env.TEST_DATABASE_URL);
-    if (!["127.0.0.1", "localhost"].includes(url.hostname))
-      throw new Error("Tests require a local PostgreSQL instance");
-    const pool = new pg.Pool({ connectionString: url.toString() });
-    const schema = "test_" + randomUUID().replaceAll("-", "");
-    await pool.query(`CREATE SCHEMA ${schema}`);
-    url.searchParams.set("options", `-csearch_path=${schema}`);
-    databaseUrl = url.toString();
-    cleanupDatabase = async () => {
-      await pool.query(`DROP SCHEMA ${schema} CASCADE`);
-      await pool.end();
-    };
-  }
+  const { databaseUrl, cleanupDatabase } = await testDatabase();
   const instance = await createApp({
     dbPath: ":memory:",
     databaseUrl,
@@ -2465,7 +2825,7 @@ test("annulling remaining tickets preserves payments, past entry, evidence, and 
   assert.equal(
     (
       await h.store.get(
-        "SELECT COUNT(*) AS n FROM outbox WHERE status IN ('pending','retry')",
+        "SELECT COUNT(*) AS n FROM outbox WHERE status IN ('pending','retry','tg_pending','tg_retry','waiting_chat','waiting_message')",
       )
     ).n,
     0,

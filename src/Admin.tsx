@@ -78,8 +78,9 @@ type Delivery = {
   error: string | null;
   provider_id: string | null;
 };
+type AdminEvent = EventData & { telegram_chat_id?: string | null };
 type Overview = {
-  events: EventData[];
+  events: AdminEvent[];
   orders: AdminOrder[];
   stats: { sold: number; checked: number; revenue: number };
   integrations: {
@@ -112,7 +113,7 @@ export function Admin() {
     ),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
-    [edit, setEdit] = useState<EventData | "new" | null>(null),
+    [edit, setEdit] = useState<AdminEvent | "new" | null>(null),
     [pricing, setPricing] = useState<EventData | null>(null),
     [issue, setIssue] = useState(false),
     [acceptanceOrder, setAcceptanceOrder] = useState<AdminOrder | null>(null),
@@ -768,7 +769,7 @@ export function Admin() {
                       ],
                       [
                         "Telegram",
-                        "Уведомления о заказах",
+                        "Уведомления о заказах и оплатах",
                         data.integrations.telegram,
                         Send,
                       ],
@@ -893,6 +894,9 @@ export function Admin() {
                                     failed: "Не доставлено",
                                     disabled: "Отключено",
                                     pending: "В очереди",
+                                    waiting_chat: "Ожидаем подтверждения чата",
+                                    waiting_message:
+                                      "Нужно проверить сообщение",
                                     retry: "Повтор",
                                     sending: "Отправляется",
                                     unknown: "Нужна проверка",
@@ -1056,12 +1060,37 @@ function Stats({ data }: { data: Overview }) {
     </div>
   );
 }
+function eventFormValues(
+  form: HTMLFormElement,
+  heroImage: string,
+  options: AdminEvent["ticket_options"],
+): Record<string, unknown> {
+  const fields = new FormData(form);
+  const ticketOptions = options?.map((option) => {
+    const name = `surcharge_${option.id}`;
+    const surcharge = Math.round(Number(fields.get(name)) * 100);
+    fields.delete(name);
+    return { ...option, surcharge };
+  });
+  return {
+    ...Object.fromEntries(fields),
+    telegram_chat_id:
+      String(fields.get("telegram_chat_id") ?? "").trim() || null,
+    price: Math.round(Number(fields.get("price")) * 100),
+    capacity: Number(fields.get("capacity")),
+    age: fields.get("age") === "" ? -1 : Number(fields.get("age")),
+    published: fields.has("published"),
+    sales_open: fields.has("sales_open"),
+    hero_image: heroImage,
+    ...(ticketOptions?.length ? { ticket_options: ticketOptions } : {}),
+  };
+}
 function EventEditor({
   event,
   close,
   saved,
 }: {
-  event: EventData | "new";
+  event: AdminEvent | "new";
   close: () => void;
   saved: () => void;
 }) {
@@ -1072,6 +1101,7 @@ function EventEditor({
     e?.hero_image || "/assets/red-moon.png",
   );
   const [uploading, setUploading] = useState(false);
+  const originalValues = useRef<Record<string, unknown> | null>(null);
   async function upload(file: File | undefined) {
     if (!file) return;
     if (file.size > 4 * 1024 * 1024) {
@@ -1101,31 +1131,33 @@ function EventEditor({
   async function submit(ev: FormEvent<HTMLFormElement>) {
     ev.preventDefault();
     setBusy(true);
-    const f = new FormData(ev.currentTarget);
-    const input = {
-      ...Object.fromEntries(f),
-      price: Math.round(Number(f.get("price")) * 100),
-      capacity: Number(f.get("capacity")),
-      age: f.get("age") === "" ? -1 : Number(f.get("age")),
-      published: f.get("published") === "on",
-      sales_open: f.get("sales_open") === "on",
-      hero_image: heroImage,
-      ...(e?.ticket_options?.length
-        ? {
-            ticket_options: e.ticket_options.map((option) => ({
-              ...option,
-              surcharge: Math.round(
-                Number(f.get(`surcharge_${option.id}`)) * 100,
-              ),
-            })),
-          }
-        : {}),
-    };
     try {
-      await api("/admin/events" + (e ? "/" + e.id : ""), {
-        method: e ? "PUT" : "POST",
-        body: JSON.stringify(input),
-      });
+      const values = eventFormValues(
+        ev.currentTarget,
+        heroImage,
+        e?.ticket_options,
+      );
+      if (e) {
+        const original = originalValues.current;
+        if (!original) throw new Error("Откройте карточку события заново.");
+        const changes = Object.fromEntries(
+          Object.entries(values).filter(
+            ([key, value]) =>
+              JSON.stringify(original[key]) !== JSON.stringify(value),
+          ),
+        );
+        if (Object.keys(changes).length) {
+          await api(`/admin/events/${e.id}`, {
+            method: "PATCH",
+            body: JSON.stringify(changes),
+          });
+        }
+      } else {
+        await api("/admin/events", {
+          method: "POST",
+          body: JSON.stringify(values),
+        });
+      }
       saved();
     } catch (e) {
       setError((e as Error).message);
@@ -1138,7 +1170,18 @@ function EventEditor({
       close={close}
       wide
     >
-      <form onSubmit={submit}>
+      <form
+        ref={(form) => {
+          if (form && e && !originalValues.current) {
+            originalValues.current = eventFormValues(
+              form,
+              heroImage,
+              e.ticket_options,
+            );
+          }
+        }}
+        onSubmit={submit}
+      >
         <div className="image-editor">
           <img src={heroImage} alt="Фон мероприятия" />
           <div>
@@ -1334,6 +1377,33 @@ function EventEditor({
         <p className="muted small-text">
           Секретный ключ терминала хранится на сервере. Уже созданные платежи
           сохраняют свой терминал.
+        </p>
+        <label>
+          Telegram-чат для заказов и оплат
+          <input
+            type="text"
+            name="telegram_chat_id"
+            defaultValue={e?.telegram_chat_id ?? ""}
+            placeholder="Числовой ID чата"
+            autoComplete="off"
+            spellCheck={false}
+            aria-describedby="event-telegram-chat-help"
+            onInput={({ currentTarget }) => {
+              const id = currentTarget.value.trim();
+              const valid =
+                /^-?[1-9]\d{0,15}$/.test(id) && Math.abs(Number(id)) < 2 ** 52;
+              currentTarget.setCustomValidity(
+                id && !valid
+                  ? "Проверьте числовой ID чата. Для группы сохраните знак минус."
+                  : "",
+              );
+            }}
+          />
+        </label>
+        <p className="muted small-text" id="event-telegram-chat-help">
+          Для личных уведомлений отправьте боту /start. Для группы добавьте бота
+          и укажите ID группы со знаком минус. Оставьте поле пустым, чтобы
+          использовать общий чат, если он настроен.
         </p>
         <div className="form-row">
           <label className="checkbox-label">

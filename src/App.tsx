@@ -56,6 +56,13 @@ import {
 } from "./useIntroPlayback";
 import { TicketCard } from "./TicketCard";
 import { OdisseyaLanding } from "./OdisseyaLanding";
+import { EventCatalog } from "./EventCatalog";
+import {
+  publicEventRoute,
+  ticketStatus,
+  utmSearch,
+  type EventLink,
+} from "./public-events";
 import { MarketingLink, UnsubscribePage } from "./Marketing";
 import {
   CookieNotice,
@@ -108,8 +115,26 @@ function Countdown({ event }: { event: EventData }) {
     </div>
   );
 }
-function Home() {
-  const [events, setEvents] = useState<EventData[]>([]);
+function PublicEvents() {
+  const [route] = useState(() =>
+    publicEventRoute(location.pathname, location.search),
+  );
+  useEffect(watchAttributionChoice, []);
+  if (route.kind === "catalog") return <EventCatalog />;
+  if (route.kind === "missing")
+    return (
+      <main className="loading-screen">
+        <h1>Страница не найдена</h1>
+        <a href="/" className="button secondary">
+          Все мероприятия
+        </a>
+      </main>
+    );
+  return <EventPage route={route} />;
+}
+
+function EventPage({ route }: { route: EventLink }) {
+  const [event, setEvent] = useState<EventData>();
   const [config, setConfig] = useState<Config>();
   const [error, setError] = useState("");
   const {
@@ -120,15 +145,6 @@ function Home() {
   const [artworkReady, setArtworkReady] = useState(false);
   const [showIntro, setShowIntro] = useState(true);
   const [revealing, setRevealing] = useState(false);
-  const [selected, setSelected] = useState(
-    new URLSearchParams(location.search).get("event"),
-  );
-  const pathParts = location.pathname.split("/").filter(Boolean);
-  const shortSlug =
-    pathParts.length === 2 && pathParts[0] === "e" ? pathParts[1] : null;
-  const referral = pathParts.length === 2 && !shortSlug;
-  const event = selected ? events.find((e) => e.id === selected) : events[0];
-  useEffect(watchAttributionChoice, []);
   useEffect(() => {
     if (event) document.title = `${event.title} · ${event.venue}`;
   }, [event]);
@@ -139,55 +155,46 @@ function Home() {
     const timeout = setTimeout(() => {
       controller.abort();
       setError(
-        "Не удалось загрузить афишу. Проверьте соединение и попробуйте ещё раз.",
+        "Не удалось загрузить мероприятие. Проверьте соединение и попробуйте ещё раз.",
       );
     }, 15000);
     Promise.all([
       api<EventData[]>("/events", { signal: controller.signal }),
-      referral
+      route.kind === "referral"
         ? api<{ event_id: string; link_id: string }>(
             "/promotion/resolve?" +
               new URLSearchParams({
-                event: pathParts[0],
-                source: pathParts[1],
+                event: route.event,
+                source: route.source,
               }),
             { signal: controller.signal },
           )
         : Promise.resolve(null),
     ])
-      .then(async ([e, source]) => {
+      .then(async ([events, source]) => {
         if (!active) return;
+        const selected =
+          route.kind === "referral" ? source?.event_id : route.value;
+        const chosen =
+          (route.kind === "slug" &&
+            events.find((event) => event.public_slug === selected)) ||
+          events.find((event) => event.id === selected);
+        if (!chosen)
+          throw new Error("Мероприятие не найдено или снято с публикации.");
         if (source) {
           rememberSource(source.event_id, source.link_id);
-          setSelected(source.event_id);
           history.replaceState(
             history.state,
             "",
-            eventPath(
-              e.find((event) => event.id === source.event_id) || {
-                id: source.event_id,
-              },
-            ),
+            eventPath(chosen) + utmSearch(location.search),
           );
         }
-        const shortEvent = shortSlug
-          ? e.find((event) => event.public_slug === shortSlug) ||
-            e.find((event) => event.id === shortSlug)
-          : null;
-        if (shortSlug && !shortEvent)
-          throw new Error("Мероприятие не найдено или снято с публикации.");
-        if (shortEvent) setSelected(shortEvent.id);
-        const wanted = shortEvent?.id || source?.event_id || selected;
-        if (wanted && !e.some((event) => event.id === wanted))
-          throw new Error("Мероприятие не найдено или снято с публикации.");
-        const chosen = wanted || e[0]?.id;
         const c = await api<Config>(
-          "/config" +
-            (chosen ? "?" + new URLSearchParams({ event: chosen }) : ""),
+          "/config?" + new URLSearchParams({ event: chosen.id }),
           { signal: controller.signal },
         );
         if (!active) return;
-        setEvents(e);
+        setEvent(chosen);
         setConfig(c);
       })
       .catch((e: Error) => {
@@ -199,7 +206,7 @@ function Home() {
       clearTimeout(timeout);
       controller.abort();
     };
-  }, []);
+  }, [route]);
 
   useEffect(() => {
     if (!event) return;
@@ -227,26 +234,34 @@ function Home() {
         />
       )}
       {error ? (
-        <div className="loading-screen">
-          <Brand />
+        <main className="loading-screen">
           <ErrorNotice text={error} />
           <button className="button primary" onClick={() => location.reload()}>
             Попробовать ещё раз
           </button>
-        </div>
+          <a href="/" className="button secondary">
+            Все мероприятия
+          </a>
+        </main>
       ) : event && config ? (
-        <EventLanding
-          event={event}
-          config={config}
-          introActive={introActive}
-          onArtworkReady={() => setArtworkReady(true)}
-        />
-      ) : config ? (
-        <div className="loading-screen">
-          <Brand />
-          <p>Афиша скоро появится.</p>
-          <a href="/admin">Управление событиями</a>
-        </div>
+        <>
+          <nav
+            className="event-catalog-back"
+            data-layout={event.layout}
+            aria-label="Афиша"
+            inert={introActive}
+          >
+            <a href="/">
+              <ChevronLeft size={16} aria-hidden="true" /> Все мероприятия
+            </a>
+          </nav>
+          <EventLanding
+            event={event}
+            config={config}
+            introActive={introActive}
+            onArtworkReady={() => setArtworkReady(true)}
+          />
+        </>
       ) : (
         <div className="loading-screen">
           <Spinner />
@@ -272,10 +287,7 @@ function EventLanding({
   const [paused] = useState(
     () => matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
-  const canBuy =
-    Boolean(event.sales_open) &&
-    event.available > 0 &&
-    new Date(`${event.date}T${event.time}:00+03:00`) > new Date();
+  const canBuy = ticketStatus(event, Date.now()) === "open";
   if (event.layout === "new-year")
     return (
       <React.Suspense
@@ -1213,6 +1225,6 @@ export default function App() {
   ) : path.startsWith("/ticket/") ? (
     <SingleTicket />
   ) : (
-    <Home />
+    <PublicEvents />
   );
 }

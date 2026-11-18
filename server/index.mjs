@@ -25,8 +25,13 @@ import {
   ticketOption,
 } from "./pricing.mjs";
 import { channelReady, processOutbox } from "./delivery.mjs";
+import { displayStatus } from "./telegram-queue.mjs";
 import { checkSmsAero } from "./smsaero.mjs";
-import { telegram } from "./telegram.mjs";
+import {
+  isTelegramChatId,
+  isTelegramChatReference,
+  telegram,
+} from "./telegram.mjs";
 import { legalService } from "./legal.mjs";
 import { marketingService } from "./marketing.mjs";
 import { staffService } from "./staff.mjs";
@@ -84,6 +89,7 @@ const customerSchema = z.object({
     .regex(/^[a-z][a-z0-9-]{0,39}$/)
     .optional(),
 });
+const eventChatSchema = z.string().refine(isTelegramChatId).nullable();
 const eventSchema = z.object({
   title: z.string().trim().min(3).max(100),
   subtitle: z.string().trim().min(3).max(120),
@@ -98,6 +104,7 @@ const eventSchema = z.object({
   description: z.string().trim().max(3000),
   dresscode: z.string().max(200),
   age: z.number().int().min(-1).max(21),
+  telegram_chat_id: eventChatSchema.optional(),
   payment_account: z.enum(["default", "livadia"]).optional(),
   layout: z.enum(["default", "odisseya", "new-year"]).optional(),
   contact_phone: z
@@ -477,7 +484,7 @@ export async function createApp({
         })),
       ),
       delivery: await store.all(
-        "SELECT channel,status FROM outbox WHERE order_id=? AND kind='tickets'",
+        `SELECT channel,CASE WHEN status IN ('waiting_chat','waiting_message') THEN 'pending' ELSE ${displayStatus} END AS status FROM outbox WHERE order_id=? AND kind='tickets'`,
         o.id,
       ),
       unsubscribe_url: await marketing.linkForOrder(o.id),
@@ -763,9 +770,11 @@ export async function createApp({
     res.json({ ok: true });
   });
   app.get("/api/admin/overview", staff, async (req, res) => {
+    const readEvent =
+      req.staff.role === "admin" ? store.adminEvent : store.event;
     const events = await Promise.all(
       (await store.all("SELECT id FROM events ORDER BY date")).map((e) =>
-        store.event(e.id),
+        readEvent(e.id),
       ),
     );
     if (req.staff.role === "door") return res.json({ events });
@@ -792,12 +801,15 @@ export async function createApp({
       integrations: {
         qrm: availability() && !demo,
         mode: mode(),
-        telegram: channelReady("telegram"),
+        telegram:
+          channelReady("telegram") &&
+          (isTelegramChatReference(process.env.TELEGRAM_CHAT_ID) ||
+            events.some((event) => event.telegram_chat_id)),
         email: channelReady("email"),
         sms: channelReady("sms"),
       },
       deliveries: await store.all(
-        "SELECT id,order_id,channel,kind,status,attempts,sent_at,error,provider_id,provider_status FROM outbox ORDER BY rowid DESC LIMIT 100",
+        `SELECT id,order_id,channel,kind,${displayStatus} AS status,attempts,sent_at,error,provider_id,provider_status FROM outbox ORDER BY rowid DESC LIMIT 100`,
       ),
     });
   });
@@ -869,7 +881,7 @@ export async function createApp({
     res.json(await store.updatePricing(req.params.id, input, req.staff.role));
   });
   app.post("/api/admin/events", staff, admin, async (req, res) => {
-    const data = eventSchema.parse(req.body);
+    const { telegram_chat_id, ...data } = eventSchema.parse(req.body);
     const id = randomUUID();
     const values = {
       id,
@@ -887,20 +899,32 @@ export async function createApp({
         ...Object.values(values),
       );
       await ensureEventSlug(store, id, data.title);
+      await store.setEventChat(id, telegram_chat_id);
       await store.audit("event_create", id, req.staff.role);
-      return store.event(id);
+      return store.adminEvent(id);
     });
     res.status(201).json(created);
   });
-  app.put("/api/admin/events/:id", staff, admin, async (req, res) => {
-    const data = eventSchema.parse(req.body);
+  const updateEvent = async (req, res) => {
+    const partial = req.method === "PATCH";
+    const parsed = partial
+      ? eventSchema.partial().strict().parse(req.body)
+      : eventSchema.parse(req.body);
+    // Zod fills some defaults even for a partial object. Only client-supplied keys may be written by PATCH.
+    const { telegram_chat_id, ...data } = partial
+      ? Object.fromEntries(
+          Object.keys(req.body).map((key) => [key, parsed[key]]),
+        )
+      : parsed;
+    if (partial && !Object.keys(req.body).length)
+      throw new AppError(400, "Укажите изменённые поля");
     const updated = await store.transaction(async () => {
       const e = await store.event(req.params.id);
       if (!e) throw new AppError(404, "Мероприятие не найдено");
       if (
         e.price_tiers &&
-        (data.capacity !== e.capacity ||
-          data.price !== e.base_price ||
+        ((data.capacity !== undefined && data.capacity !== e.capacity) ||
+          (data.price !== undefined && data.price !== e.base_price) ||
           (data.price_tiers !== undefined &&
             JSON.stringify(data.price_tiers) !== JSON.stringify(e.price_tiers)))
       )
@@ -908,7 +932,10 @@ export async function createApp({
           409,
           "Меняйте количество и стоимость в разделе «Билеты и цены». Если настройки уже изменены, откройте событие заново.",
         );
-      if (data.capacity < (await store.reserved(e.id)))
+      if (
+        data.capacity !== undefined &&
+        data.capacity < (await store.reserved(e.id))
+      )
         throw new AppError(
           409,
           "Лимит меньше количества проданных и зарезервированных билетов",
@@ -937,21 +964,29 @@ export async function createApp({
                 ? JSON.stringify(data.price_tiers)
                 : null,
             }),
-        published: Number(data.published),
-        sales_open: Number(data.sales_open),
+        ...(data.published === undefined
+          ? {}
+          : { published: Number(data.published) }),
+        ...(data.sales_open === undefined
+          ? {}
+          : { sales_open: Number(data.sales_open) }),
       };
-      await store.run(
-        `UPDATE events SET ${Object.keys(values)
-          .map((k) => `${k}=?`)
-          .join(",")} WHERE id=?`,
-        ...Object.values(values),
-        e.id,
-      );
+      if (Object.keys(values).length)
+        await store.run(
+          `UPDATE events SET ${Object.keys(values)
+            .map((k) => `${k}=?`)
+            .join(",")} WHERE id=?`,
+          ...Object.values(values),
+          e.id,
+        );
+      await store.setEventChat(e.id, telegram_chat_id);
       await store.audit("event_update", e.id, req.staff.role);
-      return store.event(e.id);
+      return store.adminEvent(e.id);
     });
     res.json(updated);
-  });
+  };
+  app.put("/api/admin/events/:id", staff, admin, updateEvent);
+  app.patch("/api/admin/events/:id", staff, admin, updateEvent);
   app.post("/api/admin/issue", staff, admin, async (req, res) => {
     const input = customerSchema.parse(req.body);
     const method = z.enum(["invite", "cash"]).parse(req.body.method);
@@ -1128,6 +1163,74 @@ export async function createApp({
         req.params.id,
       );
       if (!j) throw new AppError(404, "Отправка не найдена");
+      if (
+        req.body?.confirmed_message_id !== undefined ||
+        req.body?.confirmed_chat_id !== undefined
+      ) {
+        const proof = z
+          .object({
+            confirmed_chat_id: z.string().refine(isTelegramChatId),
+            confirmed_message_id: z
+              .string()
+              .regex(/^[1-9]\d{0,15}$/)
+              .refine((v) => Number.isSafeInteger(Number(v))),
+            source_delivery_id: z.string().min(1).max(100).optional(),
+          })
+          .strict()
+          .parse(req.body);
+        await store.transaction(async () => {
+          const held = await store.get(
+            `SELECT d.chat_id FROM outbox h JOIN order_telegram_destinations d ON d.order_id=h.order_id WHERE h.id=? AND h.channel='telegram' AND h.status='waiting_message'`,
+            j.id,
+          );
+          if (!held || held.chat_id !== proof.confirmed_chat_id)
+            throw new AppError(
+              409,
+              "Исходный чат или состояние отправки не совпадает",
+            );
+          const conflict = await store.get(
+            `SELECT p.id FROM outbox p JOIN order_telegram_destinations d ON d.order_id=p.order_id WHERE p.channel='telegram' AND d.chat_id=? AND p.provider_id IS NOT NULL AND ((p.order_id<>? AND p.provider_id=?) OR (p.order_id=? AND p.provider_id<>?)) LIMIT 1`,
+            held.chat_id,
+            j.order_id,
+            proof.confirmed_message_id,
+            j.order_id,
+            proof.confirmed_message_id,
+          );
+          if (conflict)
+            throw new AppError(
+              409,
+              "Номер сообщения расходится с историей заказов",
+            );
+          const sources = await store.all(
+            `SELECT id FROM outbox WHERE channel='telegram' AND order_id=? AND status IN ('sent','unknown') AND provider_id IS NULL ${proof.source_delivery_id ? "AND id=?" : ""} ORDER BY rowid LIMIT 2`,
+            j.order_id,
+            ...(proof.source_delivery_id ? [proof.source_delivery_id] : []),
+          );
+          if (!sources.length)
+            throw new AppError(409, "Состояние исходной отправки изменилось");
+          if (sources.length > 1)
+            throw new AppError(
+              409,
+              "У заказа несколько прежних отправок. Укажите ID проверенной записи",
+            );
+          await store.run(
+            "UPDATE outbox SET provider_id=?,status='sent',error=NULL WHERE id=?",
+            proof.confirmed_message_id,
+            sources[0].id,
+          );
+          await store.run(
+            "UPDATE outbox SET status='tg_retry',next_at=0,error=NULL WHERE order_id=? AND status='waiting_message'",
+            j.order_id,
+          );
+          await store.audit("telegram_message_verified", j.id, req.staff.actor);
+        });
+        return res.json({ ok: true });
+      }
+      if (j.status === "waiting_chat" || j.status === "waiting_message")
+        throw new AppError(
+          409,
+          j.error || "Сначала проверьте исходную отправку в Telegram",
+        );
       if (["sent", "sending", "submitted", "delivered"].includes(j.status))
         throw new AppError(409, "Сообщение уже отправлено или отправляется");
       if (j.channel === "sms" && j.provider_id && j.status === "unknown") {
@@ -1145,7 +1248,7 @@ export async function createApp({
           "Сначала проверьте отправку в сервисе и подтвердите повтор",
         );
       await store.run(
-        "UPDATE outbox SET status='pending',next_at=0,provider_id=NULL,provider_status=NULL,status_attempts=0 WHERE id=? AND status=?",
+        "UPDATE outbox SET status='pending',next_at=0,provider_id=CASE WHEN channel='telegram' THEN provider_id ELSE NULL END,provider_status=NULL,status_attempts=0 WHERE id=? AND status=?",
         j.id,
         j.status,
       );

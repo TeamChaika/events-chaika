@@ -1,6 +1,33 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createTelegramClient } from "../server/telegram.mjs";
+import { createTelegramClient, isTelegramChatId } from "../server/telegram.mjs";
+
+const chatId = "-1001234567890";
+
+test("the read-only Telegram lookup accepts only a matching current alias and numeric ID", async (t) => {
+  setup(t);
+  let result = {
+    id: -1001234567890,
+    username: "primary_name",
+    active_usernames: ["legacy_group"],
+  };
+  const client = createTelegramClient(
+    async (url, options) => {
+      assert.ok(url.endsWith("/getChat"));
+      assert.deepEqual(JSON.parse(options.body), { chat_id: "@Legacy_Group" });
+      return Response.json({ ok: true, result });
+    },
+    () => undefined,
+  );
+  assert.equal(await client.resolveChat("@Legacy_Group"), chatId);
+  result = { id: -44, username: "someone_else" };
+  await assert.rejects(client.resolveChat("@Legacy_Group"), {
+    message: "telegram_unknown",
+  });
+  await assert.rejects(client.resolveChat("https://invalid.example"), {
+    message: "telegram_rejected",
+  });
+});
 
 function setup(t) {
   const previous = process.env.TELEGRAM_BOT_TOKEN;
@@ -25,7 +52,11 @@ test("Telegram sends once through configured proxy and retains message ID", asyn
         });
       sends++;
       assert.equal(JSON.parse(options.body).text, "Проверка");
-      return Response.json({ ok: true, result: { message_id: 42 } });
+      assert.equal(JSON.parse(options.body).chat_id, chatId);
+      return Response.json({
+        ok: true,
+        result: { message_id: 42, chat: { id: Number(chatId) } },
+      });
     },
     () => proxy,
   );
@@ -34,7 +65,7 @@ test("Telegram sends once through configured proxy and retains message ID", asyn
     username: "fixture_bot",
     proxy: true,
   });
-  assert.deepEqual(await client.send("Проверка"), {
+  assert.deepEqual(await client.send("Проверка", chatId), {
     status: "sent",
     providerId: "42",
   });
@@ -50,7 +81,7 @@ test("Telegram never falls back or retries an uncertain proxy send", async (t) =
     },
     () => ({}),
   );
-  await assert.rejects(client.send("Проверка"), {
+  await assert.rejects(client.send("Проверка", chatId), {
     message: "telegram_unknown",
   });
   assert.equal(sends, 1);
@@ -61,14 +92,14 @@ test("Telegram distinguishes provider rejection from invalid acknowledgement", a
     async () => Response.json({ ok: false }, { status: 403 }),
     () => undefined,
   );
-  await assert.rejects(rejected.send("Проверка"), {
+  await assert.rejects(rejected.send("Проверка", chatId), {
     message: "telegram_rejected",
   });
   const malformed = createTelegramClient(
     async () => Response.json({ ok: true, result: {} }),
     () => undefined,
   );
-  await assert.rejects(malformed.send("Проверка"), {
+  await assert.rejects(malformed.send("Проверка", chatId), {
     message: "telegram_unknown",
   });
 });
@@ -80,9 +111,13 @@ test("Telegram edits the known message and accepts an already applied edit", asy
     async (url, options) => {
       assert.ok(url.endsWith("/editMessageText"));
       assert.equal(JSON.parse(options.body).message_id, 42);
+      assert.equal(JSON.parse(options.body).chat_id, chatId);
       count++;
       return count === 1
-        ? Response.json({ ok: true, result: { message_id: 42 } })
+        ? Response.json({
+            ok: true,
+            result: { message_id: 42, chat: { id: Number(chatId) } },
+          })
         : Response.json(
             {
               ok: false,
@@ -95,14 +130,71 @@ test("Telegram edits the known message and accepts an already applied edit", asy
     },
     () => undefined,
   );
-  assert.deepEqual(await client.edit("42", "Оплачено"), {
+  assert.deepEqual(await client.edit("42", "Оплачено", chatId), {
     status: "sent",
     providerId: "42",
   });
-  assert.deepEqual(await client.edit("42", "Оплачено"), {
+  assert.deepEqual(await client.edit("42", "Оплачено", chatId), {
     status: "sent",
     providerId: "42",
   });
+});
+
+test("chat IDs preserve signed 52-bit integers and reject IDs in another form", () => {
+  for (const id of [
+    chatId,
+    "1",
+    "-123",
+    "-4503599627370495",
+    "4503599627370495",
+  ])
+    assert.equal(isTelegramChatId(id), true, id);
+  for (const id of [
+    null,
+    123,
+    "",
+    "0",
+    "-0",
+    " 1",
+    "+1",
+    "0123",
+    "1.0",
+    "1e5",
+    "1\n",
+    "@chat",
+    "-4503599627370496",
+    "9007199254740993",
+  ])
+    assert.equal(isTelegramChatId(id), false, String(id));
+});
+
+test("the client never guesses a recipient and does not trust an acknowledgment for another chat", async (t) => {
+  setup(t);
+  let requests = 0;
+  const client = createTelegramClient(
+    async () => {
+      requests++;
+      return Response.json({
+        ok: true,
+        result: { message_id: 42, chat: { id: 123 } },
+      });
+    },
+    () => undefined,
+  );
+  await assert.rejects(client.send("Проверка"), {
+    message: "telegram_rejected",
+  });
+  await assert.rejects(client.edit("42", "Оплачено", ""), {
+    message: "telegram_rejected",
+  });
+  assert.equal(requests, 0);
+  await assert.rejects(client.send("Проверка", chatId), {
+    message: "telegram_unknown",
+  });
+  await assert.rejects(client.edit("42", "Оплачено", chatId), {
+    message: "telegram_unknown",
+  });
+  assert.equal(requests, 2);
 });
 
 test("group membership verifies the exact Telegram identity and status through the existing transport", async (t) => {

@@ -14,9 +14,13 @@ import {
   ticketOption,
 } from "./pricing.mjs";
 import { openDatabase } from "./database.mjs";
+import { isTelegramChatId, isTelegramChatReference } from "./telegram.mjs";
+import { activeDelivery, installTelegramQueue } from "./telegram-queue.mjs";
 import { randomBytes, randomUUID } from "node:crypto";
 
 export const token = () => randomBytes(24).toString("hex");
+const attemptedTelegram =
+  "channel='telegram' AND (attempts>0 OR provider_id IS NOT NULL OR status IN ('sending','sent','unknown'))";
 export class AppError extends Error {
   constructor(status, message, code) {
     super(message);
@@ -30,12 +34,18 @@ export async function openStore(
   pricingMode = "live",
 ) {
   const db = await openDatabase(path, databaseUrl);
+  // Only an explicitly confirmed historical recipient can identify old Telegram messages.
+  const legacyChatId = isTelegramChatId(process.env.TELEGRAM_LEGACY_CHAT_ID)
+    ? process.env.TELEGRAM_LEGACY_CHAT_ID
+    : null;
   const schema = `
     CREATE TABLE IF NOT EXISTS events (
       id TEXT PRIMARY KEY, title TEXT NOT NULL, subtitle TEXT NOT NULL, date TEXT NOT NULL, time TEXT NOT NULL,
       venue TEXT NOT NULL, address TEXT NOT NULL, price INTEGER NOT NULL CHECK(price>=0), capacity INTEGER NOT NULL,
       description TEXT NOT NULL, dresscode TEXT NOT NULL, age INTEGER NOT NULL DEFAULT 16,
       published INTEGER NOT NULL DEFAULT 1, sales_open INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS event_telegram_settings (
+      event_id TEXT PRIMARY KEY REFERENCES events(id), telegram_chat_id TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS orders (
       id TEXT PRIMARY KEY, access_token TEXT NOT NULL UNIQUE, event_id TEXT NOT NULL REFERENCES events(id),
       first_name TEXT NOT NULL, last_name TEXT NOT NULL, phone TEXT NOT NULL, email TEXT NOT NULL,
@@ -70,6 +80,8 @@ export async function openStore(
       id TEXT PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id), channel TEXT NOT NULL,
       kind TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0,
       next_at INTEGER NOT NULL DEFAULT 0, sent_at TEXT, error TEXT, UNIQUE(order_id,channel,kind));
+    CREATE TABLE IF NOT EXISTS order_telegram_destinations (
+      order_id TEXT PRIMARY KEY REFERENCES orders(id), chat_id TEXT);
     CREATE TABLE IF NOT EXISTS audit (id TEXT PRIMARY KEY, action TEXT NOT NULL, entity TEXT NOT NULL, actor TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS payment_accounts (
       id TEXT PRIMARY KEY CHECK(id='livadia'), encrypted_config TEXT NOT NULL,
@@ -106,6 +118,16 @@ export async function openStore(
     CREATE INDEX IF NOT EXISTS tickets_order ON tickets(order_id);`;
   try {
     await db.transaction(async () => {
+      const hadDestinations =
+        db.kind === "postgres"
+          ? (
+              await db.get(
+                "SELECT to_regclass('order_telegram_destinations') AS name",
+              )
+            ).name
+          : await db.get(
+              "SELECT name FROM sqlite_master WHERE type='table' AND name='order_telegram_destinations'",
+            );
       await db.exec(
         db.kind === "postgres"
           ? schema
@@ -132,6 +154,7 @@ export async function openStore(
           const role = '"' + namespace.role.replaceAll('"', '""') + '"';
           for (const table of [
             "events",
+            "event_telegram_settings",
             "orders",
             "tickets",
             "checkin_batches",
@@ -140,6 +163,7 @@ export async function openStore(
             "staff_accounts",
             "staff_sessions",
             "outbox",
+            "order_telegram_destinations",
             "audit",
             "payment_accounts",
             "media",
@@ -253,6 +277,26 @@ export async function openStore(
             `ALTER TABLE outbox ADD COLUMN ${db.kind === "postgres" ? "IF NOT EXISTS " : ""}${name} ${type}`,
           );
       }
+      if (!hadDestinations) {
+        // Old sends recorded only the message ID. Never pair it with a guessed chat.
+        await db.run(
+          `INSERT INTO order_telegram_destinations(order_id,chat_id)
+           SELECT DISTINCT order_id,? FROM outbox WHERE ${attemptedTelegram}`,
+          legacyChatId,
+        );
+        if (isTelegramChatReference(process.env.TELEGRAM_CHAT_ID))
+          await db.run(
+            `INSERT OR IGNORE INTO order_telegram_destinations(order_id,chat_id)
+             SELECT DISTINCT order_id,? FROM outbox WHERE channel='telegram'`,
+            process.env.TELEGRAM_CHAT_ID,
+          );
+      } else if (legacyChatId) {
+        await db.run(
+          "UPDATE order_telegram_destinations SET chat_id=? WHERE chat_id IS NULL",
+          legacyChatId,
+        );
+      }
+      await installTelegramQueue(db);
     });
   } catch (error) {
     await db.close();
@@ -393,6 +437,26 @@ export async function openStore(
       available: Math.max(0, e.capacity - (await reserved(id))),
     };
   };
+  const adminEvent = async (id) => {
+    const data = await event(id);
+    if (!data) return null;
+    const settings = await get(
+      "SELECT telegram_chat_id FROM event_telegram_settings WHERE event_id=?",
+      id,
+    );
+    return { ...data, telegram_chat_id: settings?.telegram_chat_id ?? null };
+  };
+  const setEventChat = async (id, chatId) => {
+    if (chatId === undefined) return;
+    if (chatId === null)
+      await run("DELETE FROM event_telegram_settings WHERE event_id=?", id);
+    else
+      await run(
+        "INSERT INTO event_telegram_settings(event_id,telegram_chat_id) VALUES (?,?) ON CONFLICT(event_id) DO UPDATE SET telegram_chat_id=excluded.telegram_chat_id",
+        id,
+        chatId,
+      );
+  };
   const pricingOverview = async (id) =>
     transaction(async () => {
       const e = await get("SELECT * FROM events WHERE id=?", id);
@@ -525,7 +589,37 @@ export async function openStore(
       );
       return pricingOverview(id);
     });
+  // One destination for every outbox stage of the order. Bind before the first send,
+  // so even a timeout, a restart or an administrator changing the event cannot reroute it.
+  const pinTelegramChat = (orderId) =>
+    transaction(async () => {
+      const destination = await get(
+        "SELECT chat_id FROM order_telegram_destinations WHERE order_id=?",
+        orderId,
+      );
+      if (destination) return destination;
+      const legacy = await get(
+        `SELECT id FROM outbox WHERE order_id=? AND ${attemptedTelegram} LIMIT 1`,
+        orderId,
+      );
+      const settings = await get(
+        "SELECT s.telegram_chat_id FROM orders o LEFT JOIN event_telegram_settings s ON s.event_id=o.event_id WHERE o.id=?",
+        orderId,
+      );
+      const chatId = legacy
+        ? legacyChatId
+        : (settings?.telegram_chat_id ?? process.env.TELEGRAM_CHAT_ID);
+      if (!legacy && !isTelegramChatReference(chatId)) return null;
+      // A legacy attempt without its original chat ID cannot safely reuse a message ID.
+      await run(
+        "INSERT INTO order_telegram_destinations(order_id,chat_id) VALUES (?,?)",
+        orderId,
+        chatId,
+      );
+      return { chat_id: chatId };
+    });
   const enqueue = async (id, kind) => {
+    await pinTelegramChat(id);
     for (const ch of ["created", "review"].includes(kind)
       ? ["telegram"]
       : ["email", "sms", "telegram"])
@@ -994,7 +1088,7 @@ export async function openStore(
       );
       if (action === "void" || isTest)
         await run(
-          "UPDATE outbox SET status='disabled',error='Заказ аннулирован или отмечен как тестовый' WHERE order_id=? AND status IN ('pending','retry')",
+          `UPDATE outbox SET status=CASE WHEN channel='telegram' THEN 'tg_disabled' ELSE 'disabled' END,error='Заказ аннулирован или отмечен как тестовый' WHERE order_id=? AND (${activeDelivery} OR status IN ('waiting_chat','waiting_message'))`,
           id,
         );
       return get("SELECT * FROM orders WHERE id=?", id);
@@ -1007,12 +1101,15 @@ export async function openStore(
     transaction,
     audit,
     event,
+    adminEvent,
+    setEventChat,
     reserved,
     quote,
     pricingOverview,
     promoUsage,
     updatePricing,
     enqueue,
+    pinTelegramChat,
     markPaid,
     checkin,
     attendance,

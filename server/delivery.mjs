@@ -1,7 +1,8 @@
 import nodemailer from "nodemailer";
 import QRCode from "qrcode";
 import { smsAeroReady, sendSmsAero, readSmsAeroStatus } from "./smsaero.mjs";
-import { telegram } from "./telegram.mjs";
+import { isTelegramUsername, telegram } from "./telegram.mjs";
+import { activeDelivery, refreshTelegramHolds } from "./telegram-queue.mjs";
 import { randomUUID } from "node:crypto";
 const escape = (s) =>
   String(s).replace(
@@ -22,7 +23,7 @@ export function channelReady(channel) {
       )
     : channel === "sms"
       ? smsAeroReady()
-      : !!(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID);
+      : !!process.env.TELEGRAM_BOT_TOKEN;
 }
 export function ticketSms(event, tickets, origin) {
   if (!tickets.length) throw new Error("sms_tickets_missing");
@@ -96,14 +97,15 @@ export async function deliver(job, order, event, tickets, origin, sms) {
   } else {
     const text = telegramOrderText(order, event, tickets, sms, origin);
     return job.provider_id
-      ? telegram.edit(job.provider_id, text)
-      : telegram.send(text);
+      ? telegram.edit(job.provider_id, text, job.telegram_chat_id)
+      : telegram.send(text, job.telegram_chat_id);
   }
 }
 
 export async function processOutbox(store, origin, demo) {
   // A durable, deduplicated update after the provider confirms (or fails) SMS delivery.
   if (!demo && channelReady("telegram")) {
+    await refreshTelegramHolds(store);
     const updates = await store.all(
       "SELECT s.order_id,s.status FROM outbox s JOIN orders o ON o.id=s.order_id WHERE s.channel='sms' AND s.kind='tickets' AND s.status IN ('delivered','failed','unknown','disabled') AND o.mode='live' AND EXISTS (SELECT 1 FROM outbox t WHERE t.order_id=s.order_id AND t.channel='telegram' AND t.status='sent' AND t.provider_id IS NOT NULL) AND NOT EXISTS (SELECT 1 FROM outbox u WHERE u.order_id=s.order_id AND u.channel='telegram' AND u.kind='sms_' || s.status)",
     );
@@ -116,7 +118,7 @@ export async function processOutbox(store, origin, demo) {
       );
   }
   const jobs = await store.all(
-    "SELECT * FROM outbox WHERE status IN ('pending','retry') AND next_at<=? ORDER BY rowid LIMIT 10",
+    `SELECT * FROM outbox WHERE ${activeDelivery} AND next_at<=? ORDER BY next_at,rowid LIMIT 10`,
     Date.now(),
   );
   for (const job of jobs) {
@@ -129,10 +131,51 @@ export async function processOutbox(store, origin, demo) {
       !channelReady(job.channel)
     ) {
       await store.run(
-        "UPDATE outbox SET status='disabled',error='Отправка не подключена или заказ тестовый' WHERE id=?",
+        `UPDATE outbox SET status=?,error='Отправка не подключена или заказ тестовый' WHERE id=? AND ${activeDelivery}`,
+        job.channel === "telegram" ? "tg_disabled" : "disabled",
         job.id,
       );
       continue;
+    }
+    if (job.channel === "telegram") {
+      const destination = await store.pinTelegramChat(job.order_id);
+      if (!destination?.chat_id) {
+        await store.run(
+          `UPDATE outbox SET status=?,error=? WHERE id=? AND ${activeDelivery}`,
+          destination ? "waiting_chat" : "tg_disabled",
+          destination
+            ? "Исходный чат прежней отправки не подтверждён. Ожидаем настройки TELEGRAM_LEGACY_CHAT_ID"
+            : "Чат для уведомлений о заказах не настроен",
+          job.id,
+        );
+        continue;
+      }
+      job.telegram_chat_id = destination.chat_id;
+      if (isTelegramUsername(destination.chat_id)) {
+        try {
+          const numericId = await telegram.resolveChat(destination.chat_id);
+          await store.run(
+            "UPDATE order_telegram_destinations SET chat_id=? WHERE order_id=? AND chat_id=?",
+            numericId,
+            job.order_id,
+            destination.chat_id,
+          );
+        } catch {
+          // getChat is read-only. Retry lookup without consuming an actual send attempt.
+          await store.run(
+            `UPDATE outbox SET status='tg_retry',next_at=?,error='Не удалось подтвердить числовой ID общего Telegram-чата по его имени' WHERE id=? AND ${activeDelivery}`,
+            Date.now() + 60000,
+            job.id,
+          );
+          continue;
+        }
+        job.telegram_chat_id = (
+          await store.get(
+            "SELECT chat_id FROM order_telegram_destinations WHERE order_id=?",
+            job.order_id,
+          )
+        ).chat_id;
+      }
     }
     const claimed = await store.transaction(async () => {
       if (job.channel === "telegram") {
@@ -141,15 +184,19 @@ export async function processOutbox(store, origin, demo) {
           job.order_id,
         );
         const blocked = await store.get(
-          "SELECT id FROM outbox WHERE order_id=? AND channel='telegram' AND id<>? AND (status='sending' OR (status='unknown' AND provider_id IS NULL AND ?=0)) LIMIT 1",
+          "SELECT id,status FROM outbox WHERE order_id=? AND channel='telegram' AND id<>? AND (status='sending' OR (status IN ('unknown','sent') AND provider_id IS NULL AND ?=0)) LIMIT 1",
           job.order_id,
           job.id,
           existing ? 1 : 0,
         );
         if (blocked) {
           await store.run(
-            "UPDATE outbox SET next_at=? WHERE id=? AND status IN ('pending','retry')",
+            `UPDATE outbox SET status=?,next_at=?,error=? WHERE id=? AND ${activeDelivery}`,
+            blocked.status === "sending" ? job.status : "waiting_message",
             Date.now() + 30000,
+            blocked.status === "sending"
+              ? null
+              : "У предыдущей отправки нет подтверждённого ID сообщения. Проверьте её в Telegram",
             job.id,
           );
           return { changes: 0 };
@@ -157,10 +204,11 @@ export async function processOutbox(store, origin, demo) {
         job.provider_id = existing?.provider_id || job.provider_id;
       }
       return store.run(
-        "UPDATE outbox SET status='sending',attempts=attempts+1,next_at=?,provider_id=? WHERE id=? AND status IN ('pending','retry')",
+        `UPDATE outbox SET status='sending',attempts=attempts+1,next_at=?,provider_id=? WHERE id=? AND ${activeDelivery} AND next_at<=?`,
         Date.now() + 120000,
         job.provider_id || null,
         job.id,
+        Date.now(),
       );
     });
     if (!claimed.changes) continue;

@@ -1,5 +1,18 @@
 import { ProxyAgent } from "undici";
 
+export function isTelegramChatId(value) {
+  // Telegram chat IDs have at most 52 significant bits. Keep their wire/storage form as text.
+  return (
+    typeof value === "string" &&
+    /^-?[1-9]\d{0,15}$/.test(value) &&
+    Math.abs(Number(value)) < 2 ** 52
+  );
+}
+export const isTelegramUsername = (value) =>
+  typeof value === "string" && /^@[a-zA-Z0-9_]{1,32}$/.test(value);
+export const isTelegramChatReference = (value) =>
+  isTelegramChatId(value) || isTelegramUsername(value);
+
 let proxy;
 export function telegramProxy() {
   const uri = process.env.TELEGRAM_PROXY_URL;
@@ -69,7 +82,7 @@ export function createTelegramClient(
         typeof body.description === "string" &&
         body.description.startsWith("Bad Request: message is not modified")
       )
-        return { message_id: data.message_id };
+        return { message_id: data.message_id, chat: { id: data.chat_id } };
       if (!response.ok || body.ok !== true)
         throw new Error(
           body.ok === false ? "telegram_rejected" : "telegram_unknown",
@@ -85,6 +98,25 @@ export function createTelegramClient(
     }
   }
   return {
+    async resolveChat(username) {
+      if (!isTelegramUsername(username)) throw new Error("telegram_rejected");
+      const chat = await call("getChat", { chat_id: username });
+      const id = String(chat?.id);
+      const usernames = [
+        chat?.username,
+        ...(Array.isArray(chat?.active_usernames) ? chat.active_usernames : []),
+      ];
+      if (
+        !isTelegramChatId(id) ||
+        !usernames.some(
+          (name) =>
+            typeof name === "string" &&
+            "@" + name.toLowerCase() === username.toLowerCase(),
+        )
+      )
+        throw new Error("telegram_unknown");
+      return id;
+    },
     async isGroupMember(chatId, userId) {
       if (
         !/^-\d+$/.test(String(chatId)) ||
@@ -126,29 +158,38 @@ export function createTelegramClient(
         proxy: Boolean(dispatcher()),
       };
     },
-    async send(text) {
+    async send(text, chatId) {
+      if (!isTelegramChatId(chatId)) throw new Error("telegram_rejected");
       const result = await call("sendMessage", {
-        chat_id: process.env.TELEGRAM_CHAT_ID,
+        chat_id: chatId,
         text,
         link_preview_options: { is_disabled: true },
       });
-      if (!Number.isSafeInteger(result?.message_id))
+      if (
+        !Number.isSafeInteger(result?.message_id) ||
+        result.message_id <= 0 ||
+        String(result.chat?.id) !== chatId
+      )
         throw new Error("telegram_unknown");
       return { status: "sent", providerId: String(result.message_id) };
     },
-    async edit(messageId, text) {
+    async edit(messageId, text, chatId) {
       if (
-        !/^\d+$/.test(String(messageId)) ||
+        !isTelegramChatId(chatId) ||
+        !/^[1-9]\d*$/.test(String(messageId)) ||
         !Number.isSafeInteger(Number(messageId))
       )
         throw new Error("telegram_rejected");
       const result = await call("editMessageText", {
-        chat_id: process.env.TELEGRAM_CHAT_ID,
+        chat_id: chatId,
         message_id: Number(messageId),
         text,
         link_preview_options: { is_disabled: true },
       });
-      if (result?.message_id !== Number(messageId))
+      if (
+        result?.message_id !== Number(messageId) ||
+        String(result?.chat?.id) !== chatId
+      )
         throw new Error("telegram_unknown");
       return { status: "sent", providerId: String(messageId) };
     },
